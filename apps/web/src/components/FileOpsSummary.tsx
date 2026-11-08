@@ -593,15 +593,6 @@ function ArtifactCard({
    * 不写「历史图片不可用」(产品 2026-09-02 推翻了设计文档 §8 里那条占位文案)。
    */
   const mediaSrc = item.snapshotUrl ? workspaceResourceUrl(item.snapshotUrl, workspaceContext) : src;
-  // Publish is an HTML-only affordance, so a `.png` card carries one button and
-  // an `.html` card carries two. The row is flex/end aligned precisely so that
-  // unevenness stays right-aligned instead of shifting the export button.
-  const showPublish = item.kind === 'html' && !!onPublish;
-  const shareDisabledTitle = viewerOnly
-    ? t('fileViewer.readonlySharedNoExport')
-    : pending || item.sharePending
-      ? t('fileViewer.shareAfterGenerationComplete')
-      : undefined;
   const needsFormatChoice = artifactExportNeedsFormatChoice(item.name);
 
   return (
@@ -718,26 +709,9 @@ function ArtifactCard({
           data-testid={`artifact-card-open-${item.name}`}
         />
       ) : null}
-      {pending && !showPublish ? null : (
+      {pending ? null : (
         <span className="artifact-card-acts">
-          {showPublish && onPublish ? (
-            <button
-              type="button"
-              className={`artifact-card-act ${shareEntryStyles.card}`}
-              aria-haspopup="menu"
-              disabled={shareDisabledTitle !== undefined}
-              title={shareDisabledTitle}
-              onClick={() => onPublish(item.name, artifactAnchorId('publish', item.name, anchorScope))}
-              data-testid={`artifact-card-publish-${item.name}`}
-              {...{ [ARTIFACT_ANCHOR_ATTR]: artifactAnchorId('publish', item.name, anchorScope) }}
-            >
-              {/* OPEND-2559 supersedes PR7170's text-only share treatment:
-                  reuse the same semantic glyph as the right-side Share action,
-                  scaled by the card action's 12px icon-box rule. */}
-              <RemixIcon name="share-forward-line" size={12} />
-              <span className="artifact-card-act-label">{t('chat.artifact.publish')}</span>
-            </button>
-          ) : null}
+
           {pending ? null : needsFormatChoice && onExport ? (
             /* 多格式(今天等价于 HTML):把锚点交出去,由预览区把它本来那块
                导出菜单开在这枚按钮旁边 */

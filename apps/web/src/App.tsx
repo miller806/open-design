@@ -102,7 +102,6 @@ import {
   type SettingsSection,
   type SettingsHighlight,
 } from './components/SettingsDialog';
-import { PrivacyConsentModal } from './components/PrivacyConsentModal';
 import { TestCampaignModal, observeTestRuntimeIdentity } from './components/TestCampaignModal';
 import { ProductionCampaignModal } from './components/ProductionCampaignModal';
 import {
@@ -125,8 +124,6 @@ import {
 import { openFirstPartyExternalLinkFromClick } from './first-party-external-link';
 import {
   RUNS_CHANGED_EVENT,
-  fetchAmrModels,
-  fetchVelaLoginStatus,
   listProjectRunsWithScope,
   type VelaLoginStatus,
 } from './providers/daemon';
@@ -2257,22 +2254,6 @@ function AppInner() {
     if (route.kind === 'project') suspendThumbnailLoads();
     else resumeThumbnailLoads();
   }, [route.kind]);
-  // Gate the privacy banner on three things:
-  //   1. Daemon config has hydrated (privacyDecisionAt is daemon-owned).
-  //   2. The user has not yet made a privacy decision.
-  //   3. Onboarding is complete (Skip and design-system creation both flip
-  //      onboardingCompleted to true; see handleCompleteOnboarding wiring).
-  // Once onboarding is done the banner is allowed on any route — including
-  // the project view the design-system finish path drops the user into, so
-  // they can read and acknowledge the disclosure while the first generation
-  // is running. Settings is irrelevant to visibility; the banner sits above
-  // the modal-backdrop layer in index.css so opening Settings does not hide
-  // it.
-  const showPrivacyConsent =
-    daemonConfigLoaded &&
-    config.privacyDecisionAt == null &&
-    config.onboardingCompleted === true &&
-    !registrationInviteActive;
   useEffect(() => {
     const body = activeProjectId
       ? { projectId: activeProjectId, fileName: activeFileName }
@@ -2285,107 +2266,6 @@ function AppInner() {
       // Daemon down or transient network — not worth surfacing.
     });
   }, [activeProjectId, activeFileName]);
-
-  useEffect(() => {
-    if (!daemonLive || (amrCatalogScopeRef.current.scoped && !amrModelContext)) return;
-    const issuedIdentity = amrCatalogIdentity;
-    let cancelled = false;
-    let timer: number | null = null;
-    const pollGeneration = amrPollGenerationRef.current + 1;
-    amrPollGenerationRef.current = pollGeneration;
-    const pollDelayMs = 1_000;
-    // Vela retries a slow remote list in the background; bounded local reads
-    // follow that single flight without spawning additional remote commands.
-    const maxRefreshPolls = 22;
-    let refreshPolls = 0;
-    const forceRefresh = forceAmrModelRefreshForRef.current === issuedIdentity;
-    if (forceRefresh) forceAmrModelRefreshForRef.current = null;
-
-    const applyAmrModels = async (refresh = false) => {
-      const options = refresh ? { refresh: true } : undefined;
-      let result;
-      if (amrModelContext) {
-        result = options
-          ? await fetchAmrModels(amrModelContext, options)
-          : await fetchAmrModels(amrModelContext);
-      } else {
-        result = await fetchAmrModels();
-      }
-      if (
-        cancelled ||
-        amrPollGenerationRef.current !== pollGeneration ||
-        amrCatalogScopeRef.current.identity !== issuedIdentity
-      ) {
-        return;
-      }
-      // A forced refresh first yields the generic preset while the scoped
-      // remote list runs. Keep the last-good selected-scope catalog visible.
-      if (result && Array.isArray(result.models) && result.models.length > 0
-        && !(result.source === 'preset' && amrModelsRef.current?.source === 'remote')) {
-        amrModelsRef.current = result;
-        setAgents((current) => mergeAmrModelsIntoAgents(current, result, amrCatalogScopeRef.current.scoped));
-      }
-      const shouldPollRefresh =
-        // Transport failures can recover without another login or scope change.
-        (!result || (result.refreshing && !result.remoteError)) &&
-        refreshPolls < maxRefreshPolls;
-      if (shouldPollRefresh) {
-        refreshPolls += 1;
-        timer = window.setTimeout(() => {
-          void applyAmrModels();
-        }, refreshPolls <= 10 ? pollDelayMs : 2_000);
-      }
-    };
-
-    void applyAmrModels(forceRefresh);
-    return () => {
-      cancelled = true;
-      if (timer !== null) window.clearTimeout(timer);
-    };
-  }, [amrPollRestartToken, daemonLive, amrCatalogIdentity]);
-
-  // App-level AMR sign-in state. Feeds two analytics globals: the
-  // `amr` configure_type bucket (deriveConfigureGlobals below) and the
-  // `user_id` public param (the AMR account id is the only join key
-  // between this PostHog project and the AMR-side one). Child surfaces
-  // push status changes up via onAmrLoginStatusChange; the global
-  // AMR_LOGIN_STATUS_EVENT covers logins finishing in surfaces that
-  // unmounted before their poll settled.
-  useEffect(() => {
-    let cancelled = false;
-    const sync = async (
-      options: { refresh?: boolean } = {},
-      restartOnSignIn = false,
-    ) => {
-      const status = await fetchVelaLoginStatus(options);
-      if (!cancelled && status) {
-        applyAmrLoginStatus(status, {
-          forceModelRefresh: options.refresh === true,
-          restartOnSignIn,
-        });
-      }
-    };
-    void sync();
-    const onStatusEvent = (event: Event) => {
-      if (amrLoginStatusEventReason(event) === 'login-canceled') {
-        clearAmrAuthRetryContinuation();
-      }
-      void sync({}, true);
-    };
-    const onReturnToApp = () => {
-      if (document.visibilityState === 'hidden') return;
-      void sync({ refresh: true });
-    };
-    window.addEventListener(AMR_LOGIN_STATUS_EVENT, onStatusEvent);
-    window.addEventListener('focus', onReturnToApp);
-    document.addEventListener('visibilitychange', onReturnToApp);
-    return () => {
-      cancelled = true;
-      window.removeEventListener(AMR_LOGIN_STATUS_EVENT, onStatusEvent);
-      window.removeEventListener('focus', onReturnToApp);
-      document.removeEventListener('visibilitychange', onReturnToApp);
-    };
-  }, [applyAmrLoginStatus, clearAmrAuthRetryContinuation, daemonLive]);
 
   useEffect(() => {
     analytics.setUserId(
@@ -3155,22 +3035,6 @@ function AppInner() {
     settingsDraftConfigRef.current = draft;
   }, []);
 
-  const handlePrivacyConsentChoice = useCallback((share: boolean) => {
-    const base = settingsDraftConfigRef.current ?? latestPersistedConfigRef.current;
-    const installationId = share
-      ? base.installationId ?? generateInstallationIdSafe()
-      : null;
-    void handleConfigPersist({
-      ...base,
-      installationId,
-      privacyDecisionAt: Date.now(),
-      telemetry: {
-        ...(base.telemetry ?? {}),
-        metrics: share,
-        content: share,
-      },
-    });
-  }, [handleConfigPersist]);
 
   /**
    * Explicit Composio API-key save. Called from the section-local
@@ -4140,6 +4004,22 @@ function AppInner() {
         message: err instanceof Error ? err.message : 'The ZIP could not be imported.',
       };
     }
+  }, [rememberLocalProject]);
+
+  // Personal edition: "new project" and "open this folder" are the same act.
+  // The picked folder becomes the project root, so no managed folder is minted.
+  const handleCreateInFolder = useCallback(async (baseDir: string, name: string) => {
+    const result = await importFolderProject(
+      { baseDir, ...(name.trim() ? { name: name.trim() } : {}) },
+      resolvedWorkspaceContextForWrite(workspaceContextStateRef.current),
+    );
+    rememberLocalProject(result.project.id);
+    setProjects((curr) => [result.project, ...curr.filter((p) => p.id !== result.project.id)]);
+    navigate({
+      kind: 'project',
+      projectId: result.project.id,
+      fileName: result.entryFile ?? null,
+    });
   }, [rememberLocalProject]);
 
   const handleImportFolder = useCallback(async (baseDir: string) => {
@@ -6180,6 +6060,7 @@ function AppInner() {
         onCreateProject={handleCreateProject}
         onCreatePluginShareProject={handleCreatePluginShareProject}
         onImportClaudeDesign={handleImportClaudeDesign}
+        onCreateInFolder={handleCreateInFolder}
         onImportFolder={handleImportFolder}
         onImportFolderResponse={handleImportFolderResponse}
         onOpenProject={handleOpenProject}
@@ -6398,42 +6279,6 @@ function AppInner() {
           onDismiss={() => setProjectOpenError(null)}
         />
       ) : null}
-      {/* First-run privacy consent banner. It waits for daemon config
-          hydration because privacyDecisionAt is daemon-owned and stripped
-          from localStorage. It waits for `onboardingCompleted` so first-run
-          users see the welcome panel before the disclosure (Skip and
-          finish both flip the flag). Independent of Settings: z-index in
-          index.css sits above modal backdrops so opening Settings does
-          not hide the banner. */}
-      <AnimatePresence>
-      {showPrivacyConsent ? (
-        <motion.div
-          initial={{ opacity: 0, y: 20, scale: 0.97 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 10, scale: 0.97 }}
-          transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-        >
-        <PrivacyConsentModal
-          onShare={() => {
-            // The banner owns only the privacy decision; it does not drive
-            // navigation. Choosing Share keeps the current anonymous identity
-            // when one already exists and enables the telemetry surface.
-            handlePrivacyConsentChoice(true);
-          }}
-          onDecline={() => {
-            handlePrivacyConsentChoice(false);
-          }}
-        />
-      </motion.div>
-      ) : null}
-      </AnimatePresence>
     </ReferralEntryProvider>
   );
-}
-
-function generateInstallationIdSafe(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-  return `inst-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }

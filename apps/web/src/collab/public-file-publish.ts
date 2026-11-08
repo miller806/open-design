@@ -86,7 +86,7 @@ export function publicFileManualRevokePublication(
 export function canPublishPublicFile(
   context: WorkspaceCollabContext | null | undefined,
 ): boolean {
-  return workspaceContextHasWorkspaceIdentity(context);
+  return false;
 }
 
 /** Dict keys this module may return; keeps the i18n contract explicit. */

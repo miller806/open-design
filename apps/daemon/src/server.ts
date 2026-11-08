@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { registerPersonalEditionRoutes } from './routes/personal-edition.js';
 import { recordStrategyTaskRunLifecycle } from './strategies/task-display.js';
 import { observeDiscoveryEvent } from './strategies/od-next/discovery-observation.js';
 import { assertCommentFileNotPending } from './collab/comment-file-retirements.js';
@@ -1284,7 +1285,6 @@ import {
   createMemberRemovalProjectReconciler,
   createVelaMemberRemovalTransferSource,
 } from './collab/member-removal-transfer.js';
-import { initializeAmrEndpointBinding } from './integrations/amr-endpoint-binding.js';
 
 /**
  * `OD_PROJECT_CREATE_PREPARATION_TIMEOUT_MS` shortens the POST /api/projects
@@ -1431,7 +1431,6 @@ const SANDBOX_MODE_ENABLED = isSandboxModeEnabled(process.env);
 const RUNTIME_DATA_DIR = resolveDataDir(process.env.OD_DATA_DIR, PROJECT_ROOT, {
   requireExplicit: SANDBOX_MODE_ENABLED,
 });
-initializeAmrEndpointBinding(RUNTIME_DATA_DIR);
 configureDiagnosticsEvidence(RUNTIME_DATA_DIR);
 const SANDBOX_RUNTIME = resolveSandboxRuntimeConfig(SANDBOX_MODE_ENABLED, RUNTIME_DATA_DIR);
 ensureSandboxRuntimeDirs(SANDBOX_RUNTIME);
@@ -3577,6 +3576,8 @@ export async function startServer({
     }
     next();
   });
+  registerPersonalEditionRoutes(app);
+
   // Heap/SQLite health: begun before the first SQLite open so a daemon that
   // dies seconds into startup still leaves a checkpoint for the next boot.
   const daemonHealth = beginDaemonHealthSession({
@@ -4782,7 +4783,6 @@ export async function startServer({
   // The poller registers each open project's exact bound membership before it
   // pulls. There is deliberately no ambient startup registration: no project
   // scope exists yet, so active-workspace state is not data-plane authority.
-  collabCloud?.start();
   // Server-authoritative owner lookup for register-on-pull: read the shared
   // project's owner from the team hub (the same list the discovery endpoint
   // serves) rather than trusting a client-supplied id, so a pulled project is
@@ -5306,7 +5306,6 @@ export async function startServer({
     },
     onError: (error) => console.warn('[od] collab publish watcher error:', error),
   });
-  collabPublishWatcher.start();
   const sharedProjectPullProfiling =
     sharedProjectPullProfileEnabled(process.env);
   const verifyProjectWorkspaceContextForRequest = async (
@@ -8298,35 +8297,7 @@ export async function startServer({
   // resource set change" digest in Vela's `/api/v1/collab/sync-digest`, so
   // this re-reads on its own cadence. The coordinator derives a stable
   // id+version signature after materialization and suppresses unchanged emits.
-  const teamResourcesPollTimer = setInterval(() => {
-    const rememberedLeases = rememberedTeamResourceScopes.activeWorkspaceLeases();
-    const rememberedLeasesByWorkspace = new Map(
-      rememberedLeases.map((lease) => [lease.workspaceId, lease]),
-    );
-    const persistentWorkspaceIds = persistentTeamResourceBackgroundWorkspaceIds();
-    const persistentWorkspaceIdSet = new Set(persistentWorkspaceIds);
-    for (const workspaceId of teamResourceBackgroundWorkspaceIds(
-      rememberedLeases,
-      persistentWorkspaceIds,
-    )) {
-      const rememberedLease = persistentWorkspaceIdSet.has(workspaceId)
-        ? undefined
-        : rememberedLeasesByWorkspace.get(workspaceId);
-      void reconcileTeamResourcesFromRemote(
-        undefined,
-        workspaceId,
-        'poll',
-        undefined,
-        rememberedLease,
-      ).catch((error) =>
-        console.warn(
-          `[od] workspace ${workspaceId} resources poll error:`,
-          error,
-        ),
-       );
-    }
-  }, 15_000);
-  teamResourcesPollTimer.unref?.();
+
 
   registerMemoryRoutes(app, {
     http: { createSseResponse, requireLocalDaemonRequest },
@@ -18798,7 +18769,6 @@ export async function startServer({
       composioConnectorProvider.stopCatalogRefreshLoop();
       orbitService.stop();
       routineService?.stop();
-      clearInterval(teamResourcesPollTimer);
       // Disarms synchronously; the returned promise drains an in-flight pass.
       // Nothing here awaits it — the point is that no NEW pass can start once
       // the daemon is coming down.
@@ -18896,7 +18866,6 @@ export async function startServer({
             "[od] public share cleanup could not read its queue; queued links may remain public",
           );
         });
-        startAmrTerminalReportDeliveryAfterBind(amrTerminalReportDelivery, boundPort);
         messageEventPayloadHeal ??= startMessageEventPayloadHeal({ db });
         // Only once listening: a startup-time fatal report would add lines to
         // the log tail that packaged startup telemetry samples.

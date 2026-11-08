@@ -139,6 +139,7 @@ interface Props {
   onImportClaudeDesign: (
     file: File,
   ) => Promise<ImportClaudeDesignOutcome | void> | ImportClaudeDesignOutcome | void;
+  onCreateInFolder?: (baseDir: string, name: string) => Promise<void> | void;
   onImportFolder?: (baseDir: string) => Promise<void> | void;
   onImportFolderResponse?: (response: OpenDesignHostProjectImportSuccess) => Promise<void> | void;
   onOpenProject: (
@@ -304,6 +305,7 @@ export function EntryView({
   onAmrBalanceGateBlockChange,
   onCreatePluginShareProject,
   onImportClaudeDesign,
+  onCreateInFolder,
   onImportFolder,
   onImportFolderResponse,
   onOpenProject,
@@ -434,6 +436,7 @@ export function EntryView({
       onAmrBalanceGateBlockChange={onAmrBalanceGateBlockChange}
       onCreatePluginShareProject={onCreatePluginShareProject}
       onImportClaudeDesign={onImportClaudeDesign}
+      {...(onCreateInFolder ? { onCreateInFolder } : {})}
       {...(onImportFolder ? { onImportFolder } : {})}
       {...(onImportFolderResponse ? { onImportFolderResponse } : {})}
       onOpenProject={onOpenProject}

@@ -32,8 +32,6 @@ import {
 } from '@open-design/contracts';
 
 import type { TelemetryPrefs } from './app-config.js';
-import { normalizeOpenDesignTelemetryRelayUrl } from './integrations/telemetry-relay.js';
-import { readVelaControlApiContext } from './integrations/vela.js';
 import {
   deriveRunTelemetryExportExpectation,
   exportRunObservation,
@@ -441,25 +439,8 @@ export interface FeedbackReportContext {
 export function readLangfuseConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): LangfuseConfig | null {
-  const publicKey = env.LANGFUSE_PUBLIC_KEY?.trim();
-  const secretKey = env.LANGFUSE_SECRET_KEY?.trim();
-  if (!publicKey || !secretKey) return null;
-  const baseUrl = (env.LANGFUSE_BASE_URL?.trim() || DEFAULT_BASE_URL).replace(
-    /\/+$/,
-    '',
-  );
-  const authHeader =
-    'Basic ' +
-    Buffer.from(`${publicKey}:${secretKey}`, 'utf8').toString('base64');
-  return {
-    authHeader,
-    baseUrl,
-    timeoutMs: parsePositiveInt(
-      env.LANGFUSE_TIMEOUT_MS,
-      DEFAULT_FETCH_TIMEOUT_MS,
-    ),
-    retries: parseNonNegativeInt(env.LANGFUSE_RETRIES, DEFAULT_FETCH_RETRIES),
-  };
+  // Personal runs and their content remain local. No cloud sink is configured.
+  return null;
 }
 
 /**
@@ -469,24 +450,8 @@ export function readLangfuseConfig(
 export function readTelemetrySinkConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): TelemetrySinkConfig | null {
-  const relayUrl = env.OPEN_DESIGN_TELEMETRY_RELAY_URL?.trim();
-  if (relayUrl) {
-    return {
-      kind: 'relay',
-      relayUrl: normalizeOpenDesignTelemetryRelayUrl(relayUrl),
-      timeoutMs: parsePositiveInt(
-        env.OPEN_DESIGN_TELEMETRY_TIMEOUT_MS ?? env.LANGFUSE_TIMEOUT_MS,
-        DEFAULT_FETCH_TIMEOUT_MS,
-      ),
-      retries: parseNonNegativeInt(
-        env.OPEN_DESIGN_TELEMETRY_RETRIES ?? env.LANGFUSE_RETRIES,
-        DEFAULT_FETCH_RETRIES,
-      ),
-    };
-  }
-
-  const config = readLangfuseConfig(env);
-  return config == null ? null : { kind: 'langfuse', ...config };
+  // Personal runs and their content remain local. No cloud sink is configured.
+  return null;
 }
 
 /**
@@ -501,11 +466,6 @@ export function readTaskTelemetrySinkConfig(
   return readRunTelemetrySinkConfig(env, configuredEnv);
 }
 
-function isVelaTelemetryEnabled(env: NodeJS.ProcessEnv): boolean {
-  const raw = env.OPEN_DESIGN_VELA_TELEMETRY?.trim().toLowerCase();
-  return raw !== '0' && raw !== 'false' && raw !== 'off' && raw !== 'no';
-}
-
 /**
  * Completed-run and feedback telemetry share the same sink selection: Vela when
  * a Control Key is present, otherwise the anonymous relay / direct Langfuse.
@@ -516,29 +476,8 @@ export function readRunTelemetrySinkConfig(
   env: NodeJS.ProcessEnv = process.env,
   configuredEnv: Record<string, string> = {},
 ): RunTelemetrySinkConfig | null {
-  if (isVelaTelemetryEnabled(env)) {
-    const context = readVelaControlApiContext(env, configuredEnv);
-    const controlKey = context?.controlKey?.trim() ?? '';
-    if (context && controlKey) {
-      return {
-        kind: 'vela',
-        apiUrl: (context.apiUrl.trim() || 'https://amr-api.open-design.ai').replace(
-          /\/+$/,
-          '',
-        ),
-        controlKey,
-        timeoutMs: parsePositiveInt(
-          env.OPEN_DESIGN_TELEMETRY_TIMEOUT_MS ?? env.LANGFUSE_TIMEOUT_MS,
-          DEFAULT_FETCH_TIMEOUT_MS,
-        ),
-        retries: parseNonNegativeInt(
-          env.OPEN_DESIGN_TELEMETRY_RETRIES ?? env.LANGFUSE_RETRIES,
-          DEFAULT_FETCH_RETRIES,
-        ),
-      };
-    }
-  }
-  return readTelemetrySinkConfig(env);
+  // Personal runs and their content remain local. No cloud sink is configured.
+  return null;
 }
 
 /**

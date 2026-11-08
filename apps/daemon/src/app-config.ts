@@ -486,6 +486,18 @@ function normalizeRetiredAgentPrefs(prefs: AppConfigPrefs): AppConfigPrefs {
   let changed = false;
   let next = prefs;
 
+  // Official-cloud choices cannot execute in the personal edition. Ask for a
+  // local runtime again instead of silently selecting an uninstalled agent.
+  if (next.agentId === 'amr') {
+    next = { ...next, agentId: null, onboardingCompleted: false };
+    changed = true;
+  }
+  if (next.agentModels?.amr) {
+    const { amr: _cloudModel, ...localModels } = next.agentModels;
+    next = { ...next, agentModels: localModels };
+    changed = true;
+  }
+
   if (typeof next.agentId === 'string' && RETIRED_AGENT_IDS.has(next.agentId)) {
     next = { ...next };
     delete next.agentId;
@@ -719,24 +731,9 @@ function filterAllowedKeys(obj: Record<string, unknown>): AppConfigPrefs {
   return normalizeRetiredAgentPrefs(normalizeAgentCliEnvPrefs(result as AppConfigPrefs));
 }
 
-// Fill in telemetry defaults when the saved config has no `telemetry`
-// field at all (fresh install, pre-disclosure). `metrics` / `content`
-// default to true so onboarding-funnel events emit from the first
-// render — without these defaults the gate at
-// `analytics.ts` (`if (cfg.telemetry?.metrics !== true) return`)
-// dropped every event a user fired before the post-onboarding
-// disclosure modal had a chance to set them. An EXPLICIT `false`
-// the user previously saved is preserved (only `undefined` gets
-// the new default), so opt-out users stay opted out across the
-// 0.7.x → 0.8.0 upgrade.
+// Personal-edition reads and writes retire legacy opt-ins as well as defaults.
 function applyTelemetryDefaults(prefs: AppConfigPrefs): AppConfigPrefs {
-  if (prefs.telemetry === undefined) {
-    return {
-      ...prefs,
-      telemetry: { metrics: true, content: true },
-    };
-  }
-  return prefs;
+  return { ...prefs, telemetry: { metrics: false, content: false, artifactManifest: false } };
 }
 
 export type MetricsConsentRead = {
@@ -760,7 +757,7 @@ export async function readMetricsConsent(dataDir: string): Promise<MetricsConsen
       }
       const metrics = (telemetry as Record<string, unknown>).metrics;
       if (typeof metrics !== 'boolean') return { status: 'unavailable', metrics: false };
-      return { status: 'available', metrics };
+      return { status: 'available', metrics: false };
     }
     return { status: 'available', metrics: applyTelemetryDefaults({}).telemetry?.metrics === true };
   } catch (error) {
@@ -888,21 +885,7 @@ export function observeAppConfig(dataDir: string, observer: () => void): () => v
 
 /** Automatic content upload must fail closed on corrupt preferences instead of applying defaults. */
 export function automaticDiagnosticsConsent(dataDir: string): boolean {
-  try {
-    const raw: unknown = JSON.parse(readFileSync(configFile(dataDir), 'utf8'));
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
-    const telemetry = (raw as Record<string, unknown>).telemetry;
-    if (telemetry !== undefined && (telemetry === null || typeof telemetry !== 'object' || Array.isArray(telemetry))) return false;
-    if (telemetry !== undefined) {
-      const value = telemetry as Record<string, unknown>;
-      return value.metrics === true && value.content === true;
-    }
-    const prefs = applyTelemetryDefaults(filterAllowedKeys(raw as Record<string, unknown>));
-    return prefs.telemetry?.metrics === true && prefs.telemetry?.content === true;
-  } catch (error) {
-    // A new installation has the same defaults as the existing telemetry settings.
-    return (error as NodeJS.ErrnoException).code === 'ENOENT';
-  }
+  return false;
 }
 
 export async function writeAppConfig(
@@ -961,7 +944,7 @@ async function doWrite(
     ? inferAgentCliEnvIntentForExplicitEnvWrite(next as AppConfigPrefs)
     : next as AppConfigPrefs;
   const normalizedNext = normalizeAgentCliEnvPrefs(nextWithInferredIntent);
-  const normalizedNextWithoutRetiredAgents = normalizeRetiredAgentPrefs(normalizedNext);
+  const normalizedNextWithoutRetiredAgents = applyTelemetryDefaults(normalizeRetiredAgentPrefs(normalizedNext));
   const file = configFile(dataDir);
   await mkdir(path.dirname(file), { recursive: true });
   const tmp = file + '.' + randomBytes(4).toString('hex') + '.tmp';

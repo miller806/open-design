@@ -9,14 +9,8 @@ export class DiagnosticRelayError extends Error {
   constructor(readonly code: string, readonly retryAfterMs = 0, readonly permanent = false) { super(code); }
 }
 export function diagnosticRelayUrl(env: NodeJS.ProcessEnv): string | null {
-  const raw = env.OPEN_DESIGN_OBJECT_RELAY_URL?.trim() || env.OPEN_DESIGN_TELEMETRY_RELAY_URL?.trim();
-  if (!raw) return null;
-  try {
-    const url = new URL(normalizeOpenDesignTelemetryRelayUrl(raw));
-    if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))) return null;
-    if (!/^\/api\/(langfuse|objects\/batch)\/?$/.test(url.pathname) || url.username || url.password || url.search) return null;
-    return url.origin;
-  } catch { return null; }
+  // The personal edition keeps diagnostic bundles on this machine.
+  return null;
 }
 
 export class DiagnosticRelay {

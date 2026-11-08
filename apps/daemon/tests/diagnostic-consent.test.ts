@@ -24,14 +24,14 @@ it('never backfills content written while disabled after opting in and restartin
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
-it('fails closed for corrupt preferences instead of restoring telemetry defaults', async () => {
+it('never enables automatic content uploads from legacy or corrupt preferences', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'diagnostic-prefs-'));
   const prior = process.env.OD_DATA_DIR; process.env.OD_DATA_DIR = dir;
   try {
     const file = join(appConfigDir(dir), 'app-config.json');
     await writeFile(file, '{broken'); expect(automaticDiagnosticsConsent(dir)).toBe(false);
     await writeFile(file, '{"telemetry":{"metrics":true,"content":false}}'); expect(automaticDiagnosticsConsent(dir)).toBe(false);
-    await writeFile(file, '{"telemetry":{"metrics":true,"content":true}}'); expect(automaticDiagnosticsConsent(dir)).toBe(true);
+    await writeFile(file, '{"telemetry":{"metrics":true,"content":true}}'); expect(automaticDiagnosticsConsent(dir)).toBe(false);
   } finally {
     if (prior === undefined) delete process.env.OD_DATA_DIR; else process.env.OD_DATA_DIR = prior;
     await rm(dir, { recursive: true, force: true });

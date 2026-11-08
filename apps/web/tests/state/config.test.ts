@@ -378,7 +378,7 @@ describe('mergeDaemonConfig', () => {
 
     expect(merged.installationId).toBe('install-1');
     expect(merged.privacyDecisionAt).toBe(1778244000000);
-    expect(merged.telemetry).toEqual({ metrics: true });
+    expect(merged.telemetry).toEqual({ metrics: false, content: false, artifactManifest: false });
   });
 
   it('migrates old daemon privacy config to a resolved decision', () => {
@@ -391,31 +391,19 @@ describe('mergeDaemonConfig', () => {
     expect(typeof merged.privacyDecisionAt).toBe('number');
   });
 
-  it('defaults reporting on and mints an installationId when the install never opted out', () => {
-    // Brand-new install: the daemon has no privacy state at all. The product
-    // default telemetry channels (metrics + content) are on and an anonymous
-    // id is assigned so events have a stable distinct id. This mirrors the
-    // first-run banner's "Share" payload; artifactManifest stays
-    // off, matching that surface.
+  it('defaults reporting off without minting an installationId', () => {
     const merged = mergeDaemonConfig(DEFAULT_CONFIG, {});
-
-    expect(merged.telemetry?.metrics).toBe(true);
-    expect(merged.telemetry?.content).toBe(true);
-    expect(merged.telemetry?.artifactManifest).toBe(false);
-    expect(typeof merged.installationId).toBe('string');
-    expect(merged.installationId).toBeTruthy();
+    expect(merged.telemetry).toEqual({ metrics: false, content: false, artifactManifest: false });
+    expect(merged.installationId).toBeFalsy();
   });
 
-  it('mints an installationId for a reporting install that somehow has none', () => {
-    // The "on but no id" state that surfaces as "Opted out" in Settings:
-    // metrics is on but no anonymous id was ever assigned.
+  it('retires an upstream opt-in without creating a tracking identity', () => {
     const merged = mergeDaemonConfig(DEFAULT_CONFIG, {
       telemetry: { metrics: true, content: false, artifactManifest: false },
       installationId: null,
     });
-
-    expect(merged.telemetry?.metrics).toBe(true);
-    expect(merged.installationId).toBeTruthy();
+    expect(merged.telemetry).toEqual({ metrics: false, content: false, artifactManifest: false });
+    expect(merged.installationId).toBeNull();
   });
 
   it('preserves an explicit opt-out and never re-mints an id', () => {

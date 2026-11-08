@@ -20,53 +20,8 @@ export function isProjectShareHistory(value: unknown, projectId: string): value 
 export type ProjectShareReadStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 export function useProjectShareHistoryState(projectId: string | undefined, context: WorkspaceCollabContext | null | undefined, publicationKey: string) {
-  const generation = currentWorkspaceAccountGeneration();
-  const scope = JSON.stringify([projectId, workspaceAccountScopedCacheKey(context), publicationKey]);
-  const [result, setResult] = useState<{ scope: string; history: ProjectShareHistoryResponse | null } | null>(null);
-  useEffect(() => {
-    let disposed = false;
-    let attempt = 0;
-    let controller: AbortController | undefined;
-    const refresh = () => {
-      const request = ++attempt;
-      const account = currentWorkspaceAccountGeneration();
-      controller?.abort();
-      setResult(null);
-      if (!projectId) return;
-      controller = new AbortController();
-      void (async () => {
-        let value: unknown;
-        try {
-          const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/share-state`, {
-            cache: 'no-store', signal: controller?.signal,
-            ...(context ? { headers: workspaceProjectHeaders(context) } : {}),
-          });
-          value = response.ok ? await response.json() : null;
-        } catch {
-          value = null; // Do not convert an authorization/transport failure to false.
-        }
-        if (disposed || attempt !== request || account !== currentWorkspaceAccountGeneration()) return;
-        setResult({ scope, history: isProjectShareHistory(value, projectId) ? value : null });
-      })();
-    };
-    refresh();
-    window.addEventListener(AMR_LOGIN_STATUS_EVENT, refresh);
-    window.addEventListener('focus', refresh);
-    const refreshChangedProject = (event: Event) => {
-      if (event instanceof CustomEvent && event.detail?.projectId === projectId) refresh();
-    };
-    window.addEventListener(PROJECT_SHARE_HISTORY_CHANGED_EVENT, refreshChangedProject);
-    return () => {
-      disposed = true;
-      controller?.abort();
-      window.removeEventListener(AMR_LOGIN_STATUS_EVENT, refresh);
-      window.removeEventListener('focus', refresh);
-      window.removeEventListener(PROJECT_SHARE_HISTORY_CHANGED_EVENT, refreshChangedProject);
-    };
-  }, [projectId, context, generation, scope]);
-  const current = result?.scope === scope ? result : null;
-  const status: ProjectShareReadStatus = !projectId ? 'idle' : !current ? 'loading' : current.history ? 'ready' : 'error';
-  return { history: current?.history ?? null, status };
+  // No cloud read is made. Unknown history must never be presented as "never shared".
+  return { history: null as ProjectShareHistoryResponse | null, status: 'idle' as ProjectShareReadStatus };
 }
 
 export function useProjectShareHistory(projectId: string | undefined, context: WorkspaceCollabContext | null | undefined, publicationKey: string) {

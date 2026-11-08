@@ -6802,7 +6802,7 @@ function ReactComponentViewer({
   const [srcDoc, setSrcDoc] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
   const [shareMenuOpen, setShareMenuOpen] = useState(false);
-  const [unifiedActionTab, setUnifiedActionTab] = useState<'share' | 'export'>('share');
+  const [unifiedActionTab, setUnifiedActionTab] = useState<'share' | 'export'>('export');
   const [shareAccess, setShareAccess] = useState<'private' | 'workspace'>('private');
   const shareRef = useRef<HTMLDivElement | null>(null);
   // HTML entries that load this file as a Babel module. `null` = still
@@ -6994,7 +6994,7 @@ function ReactComponentViewer({
                     still share one popover shell so switching keeps the menu
                     anchored in place. Export leads — it is the far more used
                     of the two (see the chrome header copy). */}
-                {(['export', 'share'] as const).map((tab) => (
+                {(['export'] as ReadonlyArray<'share' | 'export'>).map((tab) => (
                   <button
                     key={tab}
                     type="button"
@@ -7840,7 +7840,7 @@ function HtmlViewer({
   // active tab is `unifiedActionTab`. External share/download requests below just
   // preselect the tab and open this one popover.
   const [deployMenuOpen, setDeployMenuOpen] = useState(false);
-  const [unifiedActionTab, setUnifiedActionTab] = useState<'share' | 'export'>('share');
+  const [unifiedActionTab, setUnifiedActionTab] = useState<'share' | 'export'>('export');
   const [shareAccess, setShareAccess] = useState<'private' | 'workspace'>('private');
   const [shareAccessMenuOpen, setShareAccessMenuOpen] = useState(false);
   const [shareAccessConfirm, setShareAccessConfirm] = useState<'private' | 'workspace' | null>(null);
@@ -15776,7 +15776,8 @@ function HtmlViewer({
   // guards the actual export/publish handlers.
   // Preview memory policy does not determine publication eligibility. The share
   // plan and POST validate the original file, never the routing-only preview.
-  const rawCanShare = isShareableArtifact;
+  // Public sharing is retired in the personal edition; local export remains.
+  const rawCanShare = false;
   const shareGuideAppUserId = useShareGuideAppUserId();
   const projectShareHistoryState = useProjectShareHistoryState(projectId, workspaceContext, JSON.stringify([file.name, publishedFileSlug, publishedFileUrl]));
   const projectShareHistory = projectShareHistoryState.history;
@@ -17794,59 +17795,13 @@ function HtmlViewer({
                     aria-label={t('fileViewer.unifiedExportTab')}
                     disabled={viewerOnly}
                     title={viewerOnly ? viewerOnlyDisabledTitle : undefined}
+                    data-artifact-anchor={toolbarMenuAnchorId}
                     onClick={openDownloadMenu}
                   >
                     <RemixIcon name="download-line" size={15} />
                     <span>{t('fileViewer.unifiedExportTab')}</span>
                   </button>
                 ) : null}
-                  <button
-                    type="button"
-                    className={`chrome-action chrome-action-secondary chrome-action-with-label chrome-action-text-only chrome-action-unified ${shareEntryStyles.toolbar}`}
-                    aria-haspopup="menu"
-                    aria-expanded={deployMenuOpen && unifiedActionTab === 'share'}
-                    data-artifact-anchor={toolbarMenuAnchorId}
-                    aria-label={shareMenuLabel}
-                    disabled={viewerOnly || !rawCanShare}
-                    title={viewerOnly ? viewerOnlyDisabledTitle : !rawCanShare || streaming ? shareUnavailableHint : undefined}
-                    onClick={openShareMenu}
-                  >
-                    {/* Owner C0: share the artifact card's forward-arrow glyph. */}
-                    <RemixIcon name="share-forward-line" size={15} />
-                    <span>{shareMenuLabel}</span>
-                  </button>
-                  {afterExportGuide.noticeId !== null ? (
-                    <AfterExportShareGuide
-                      key={afterExportGuide.noticeId}
-                      labels={{
-                        title: t('fileViewer.shareGuide.title'),
-                        description: t('fileViewer.shareGuide.description'),
-                        openShare: t('fileViewer.shareGuide.tryShare'),
-                        neverShow: t('fileViewer.shareGuide.neverShowAgain'),
-                        close: t('fileViewer.shareGuide.close'),
-                        saveFailed: t('fileViewer.shareGuide.preferenceSaveFailed'),
-                      }}
-                      onObserve={event => observeAnalytics(() => {
-                        const identity = {
-                          page_name: 'artifact' as const,
-                          area: 'share_guide' as const,
-                          project_id: projectId,
-                          project_kind: projectKind,
-                          artifact_id: anonymizeArtifactId({ projectId, fileName: file.name }),
-                        };
-                        if (event === 'view') trackShareGuideSurfaceView(analytics.track, identity);
-                        else trackShareGuideClick(analytics.track, { ...identity, element: event });
-                      })}
-                      onDismiss={afterExportGuide.dismiss}
-                      onNeverShow={afterExportGuide.neverShow}
-                      onOpenShare={() => {
-                        setMenuAnchorId(null);
-                        setMenuOrigin('toolbar');
-                        setUnifiedActionTab('share');
-                        setDeployMenuOpen(true);
-                      }}
-                    />
-                  ) : null}
                 {deployMenuOpen && (rawCanShare || rawCanDownload) ? (
                   /*
                     * **同一块菜单,只是可能换个地方开。**
@@ -17884,88 +17839,6 @@ function HtmlViewer({
                         : undefined
                     }
                   >
-                    {unifiedActionTab === 'share' && rawCanShare ? (
-                      <>
-                      <SharePanelHeader
-                        title={t('fileViewer.unifiedShareTab')}
-                        closeLabel={t('common.close')}
-                        onClose={closeDeployMenu}
-                      >
-                        <ShareMoreMenu label={t('fileViewer.moreSharingOptions')} items={DEPLOY_PROVIDER_OPTIONS.map(option => ({
-                          id: option.id,
-                          label: deployActionLabelFor(option.id),
-                          icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
-                            {option.id === CLOUDFLARE_PAGES_PROVIDER_ID
-                              ? <><rect x="4" y="3" width="16" height="18" rx="1.5" /><path d="M4 8h16M8 12h8M8 16h5" /></>
-                              : <path d="M7 18H6a4 4 0 0 1-.6-8A7 7 0 0 1 19 9a4.5 4.5 0 0 1-1 9h-1M12 21V11m-3 3 3-3 3 3" />}
-                          </svg>,
-                          disabled: streaming || viewerOnly,
-                          title: viewerOnly ? viewerOnlyDisabledTitle : streaming ? t('fileViewer.shareAfterGenerationComplete') : undefined,
-                          onSelect: () => { void openDeployModal(option.id); },
-                        }))} />
-                      </SharePanelHeader>
-
-                      <ShareTab
-                        publicationQueryState={publicQuery.identity === publicFileReadIdentity ? publicQuery.status : 'loading'}
-                        retryPublicationQuery={() => setPublicQueryRetry(value => value + 1)}
-                        publicationStatus={fileShareStatus === 'active' || fileShareStatus === 'stopped' ? fileShareStatus : (projectShareHistory?.publications.find(publication => publication.sourceFilePath === file.name)?.status ?? null)}
-                        publicationFreshness={fileShareFreshness}
-                        updateCurrentFilePublic={updateCurrentFilePublic}
-                        canResumeUpdateAfterLogin={Boolean(retainedShareWasOutdatedRef.current && retainedShareAuthorizationScopeKeyRef.current && fileShareStatus === 'active' && publishedFileUrl)}
-                        onSignInSuccess={() => {
-                          const request = { projectId, filePath: file.name, expiresAt: Date.now() + 120_000 };
-                          // App owns this across ProjectView remounts. Only an
-                          // embedded viewer needs the local fallback; keeping
-                          // both would resurrect intent after App cancels it.
-                          if (onShareLoginReturnChange) onShareLoginReturnChange(request);
-                          else shareLoginReturnRef.current = request;
-                        }}
-                        onUpdateLoginSuccess={() => {
-                          const priorScope = retainedShareAuthorizationScopeKeyRef.current;
-                          if (!priorScope || !retainedShareWasOutdatedRef.current || !publishedFileSlug
-                            || !publishedFileUrl || fileShareStatus !== 'active') return;
-                          pendingShareUpdateAfterLoginRef.current = { projectId, fileName: file.name,
-                            slug: publishedFileSlug, authorizationScopeKey: priorScope, expiresAt: Date.now() + 120_000 };
-                        }}
-                        projectId={projectId}
-                        filePath={file.name}
-                        menuOrigin={menuOrigin}
-                        workspaceContext={workspaceContext}
-                        t={t}
-                        shareAccess={shareAccess}
-                        shareAccessMenuOpen={shareAccessMenuOpen}
-                        shareAccessBusy={shareAccessBusy}
-                        shareAccessFailureKey={shareAccessFailureKey}
-                        retryWorkspaceShareAccess={() => { if (shareAccessFailureTarget) void commitWorkspaceShareAccess(shareAccessFailureTarget); }}
-                        viewerOnly={viewerOnly}
-                        setShareAccessMenuOpen={setShareAccessMenuOpen}
-                        setWorkspaceShareAccess={setWorkspaceShareAccess}
-                        canPublishPublic={canPublishPublic}
-                        filePublished={filePublished}
-                        publishedLinkUnavailable={publishedLinkUnavailable}
-                        publishedFileUrl={publishedFileUrl}
-                        copyPublishedFileLink={copyPublishedFileLink}
-                        publishLinkFeedback={publishLinkFeedback}
-                        publishingPublicFile={publishingPublicFile}
-                        publicOperation={publicOperation}
-                        publishProgress={publishProgress}
-                        unpublishCurrentFilePublic={unpublishCurrentFilePublic}
-                        retryPublicShare={publicRetryAction === 'stop' ? unpublishCurrentFilePublic : updateCurrentFilePublic}
-                        viewerOnlyDisabledTitle={viewerOnlyDisabledTitle}
-                        publishCurrentFilePublic={publishCurrentFilePublic}
-                        publishFailureKey={publishFailureKey}
-                        publishConflict={publishFailureKey === 'fileViewer.publishFileEntryIndexConflict' ? publishConflict : null}
-                        streaming={streaming}
-                        sharePageUrl={sharePageUrl}
-                        canCopyShareLink={canCopyShareLink}
-                        shareUnavailableHint={shareUnavailableHint}
-                        copyShareLink={copyShareLink}
-                        copyShareLinkLabel={copyShareLinkLabel}
-                        canOpenSharePage={canOpenSharePage}
-                        shareLinkStatusHint={shareLinkStatusHint}
-                      />
-                      </>
-                    ) : null}
                     {unifiedActionTab === 'export' && rawCanDownload ? (
                       <div className="chrome-unified-panel">
                   <button

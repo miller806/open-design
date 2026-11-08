@@ -152,6 +152,10 @@ interface Props {
   onDeleteTemplate?: (id: string) => Promise<boolean>;
   promptTemplates: PromptTemplateSummary[];
   onCreate: (input: CreateInput & { requestId?: string }) => void;
+  // Personal edition: the chosen folder IS the project root, so creating a
+  // project links it through the same import path instead of minting a
+  // managed folder under the daemon data dir.
+  onCreateInFolder?: (baseDir: string, name: string) => Promise<void> | void;
   onImportClaudeDesign?: (
     file: File,
   ) => Promise<ImportClaudeDesignOutcome | void> | ImportClaudeDesignOutcome | void;
@@ -282,6 +286,7 @@ export function NewProjectPanel({
   onDeleteTemplate,
   promptTemplates,
   onCreate,
+  onCreateInFolder,
   onImportClaudeDesign,
   onImportFolder,
   onImportFolderResponse,
@@ -303,6 +308,7 @@ export function NewProjectPanel({
   const [workingDir, setWorkingDir] = useState<string | null>(null);
   const [workingDirToken, setWorkingDirToken] = useState<string | null>(null);
   const [workingDirPicking, setWorkingDirPicking] = useState(false);
+  const [creatingInFolder, setCreatingInFolder] = useState(false);
   const [workingDirError, setWorkingDirError] = useState<
     { message: string; details?: string } | null
   >(null);
@@ -789,6 +795,21 @@ export function NewProjectPanel({
     });
   }
 
+  async function handleCreateInFolder() {
+    if (!workingDir || creatingInFolder || !onCreateInFolder) return;
+    setCreatingInFolder(true);
+    setWorkingDirError(null);
+    try {
+      await onCreateInFolder(workingDir, name.trim());
+    } catch (err) {
+      setWorkingDirError({
+        message: err instanceof Error ? err.message : t('chat.linkedFolderPickError'),
+      });
+    } finally {
+      setCreatingInFolder(false);
+    }
+  }
+
   async function handlePickWorkingDir() {
     if (workingDirPicking) return;
     setWorkingDirPicking(true);
@@ -847,6 +868,7 @@ export function NewProjectPanel({
     }
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- see below
   const folderImport = useOpenFolderImport({
     skillId: skillIdForTab,
     onImportFolder,
@@ -1111,11 +1133,32 @@ export function NewProjectPanel({
           />
         ) : null}
 
+        {onCreateInFolder ? (
+          <div className="newproj-folder-root">
+            <p className="newproj-folder-root-label">{t('workingDirPicker.projectFolder')}</p>
+            {workingDir ? (
+              <code className="newproj-folder-root-path" data-testid="new-project-folder-path">{workingDir}</code>
+            ) : (
+              <p className="newproj-folder-root-hint">{t('workingDirPicker.projectFolderHint')}</p>
+            )}
+            <button
+              type="button"
+              className="ghost newproj-folder-root-pick"
+              data-testid="new-project-choose-folder"
+              onClick={() => void handlePickWorkingDir()}
+              disabled={workingDirPicking}
+            >
+              <Icon name="folder" size={14} />
+              <span>{workingDirPicking ? t('workingDirPicker.processing') : t('workingDirPicker.chooseFolder')}</span>
+            </button>
+          </div>
+        ) : null}
+
         <button
           className="primary newproj-create"
-          data-testid="create-project"
-          onClick={handleCreate}
-          disabled={!canCreate}
+          data-testid={onCreateInFolder ? 'new-project-create' : 'create-project'}
+          onClick={onCreateInFolder ? () => void handleCreateInFolder() : handleCreate}
+          disabled={!canCreate || (Boolean(onCreateInFolder) && (!workingDir || creatingInFolder))}
           title={
             tab === 'template' && templateId == null
               ? t('newproj.createDisabledTitle')

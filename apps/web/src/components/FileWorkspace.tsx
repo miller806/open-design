@@ -139,7 +139,7 @@ import { FileSyncBadge, type FileSyncBadgeState } from '../collab/FileSyncBadge'
 import { Toast } from './Toast';
 import { activeFileSharesBeforeDelete } from './project-actions/activeFileSharesBeforeDelete';
 import { ProjectDeleteConfirmDialog } from './project-actions/ProjectDeleteConfirmDialog';
-import { useProjectShareHistoryState } from './share/useProjectShareHistory';
+import { useProjectShareHistoryState, type ProjectShareReadStatus } from './share/useProjectShareHistory';
 import { TabLauncherMenu } from './workspace/TabLauncherMenu';
 import { buildLauncherActions, type LauncherContext } from './workspace/tab-launcher';
 import { SideChatTab, type ActiveConversationChatState } from './workspace/SideChatTab';
@@ -4917,10 +4917,14 @@ function DesignSystemProjectPanel({
     deleteRequest && workspaceContext ? deleteRequest.projectId : undefined,
     workspaceContext, 'delete-confirmation',
   );
-  const deleteShareStatus = deleteRequest && (!workspaceContext || deleteRequest.projectId !== projectId
-    || deleteRequest.generation !== currentWorkspaceAccountGeneration()) ? 'error' : deleteHistoryStatus;
-  const deleteActiveShareCount = deleteShareHistory
-    ? deleteShareHistory.publications.filter(publication => publication.status === 'active').length : null;
+  const deleteShareStatus: ProjectShareReadStatus = deleteRequest
+    && (deleteRequest.projectId !== projectId
+      || deleteRequest.generation !== currentWorkspaceAccountGeneration())
+    ? 'error'
+    : workspaceContext ? deleteHistoryStatus : 'ready';
+  // Personal projects have no public links, so the count is known without a read.
+  const deleteActiveShareCount = workspaceContext && deleteShareHistory
+    ? deleteShareHistory.publications.filter(publication => publication.status === 'active').length : 0;
   // Transient feedback for kit edits (upload / refresh / reset / delete) so an
   // action that previously fired-and-forgot now reports success or failure.
   const [kitToast, setKitToast] = useState<{ message: string; tone: DesignKitActionFeedbackTone } | null>(null);
@@ -5112,7 +5116,7 @@ function DesignSystemProjectPanel({
     if (kitActionBusy || deleteInFlight.current || !onDeleteDesignSystemProject || !editable
       || !deleteRequest || deleteRequest.projectId !== projectId
       || deleteRequest.generation !== currentWorkspaceAccountGeneration()
-      || deleteShareStatus !== 'ready' || deleteActiveShareCount === null) return;
+      || deleteShareStatus !== 'ready') return;
     deleteInFlight.current = true;
     setDeleteFailed(false);
     setKitActionBusy('delete');

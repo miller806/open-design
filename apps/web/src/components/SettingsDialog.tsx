@@ -166,7 +166,6 @@ import {
 import { PetSettings } from './pet/PetSettings';
 import { McpClientSection } from './McpClientSection';
 import { DesignSystemsSection } from './DesignSystemsSection';
-import { PrivacySection } from './PrivacySection';
 import { ProjectLocationsSection } from './ProjectLocationsSection';
 import { RoutinesSection } from './RoutinesSection';
 import { SettingsWorkspaceSection } from './SettingsWorkspaceSection';
@@ -260,15 +259,11 @@ export type SettingsSection =
 // "pet settings" entry point (App.openPetSettings) has no other destination,
 // so leaving it unmapped would deep-link into a section that renders nothing.
 //
-// Sections that keep their own render block but no longer have a nav item
-// (workspace, mcpClient, composio, designSystems) must NOT be listed: they
-// stay individually addressable through `initialSection`, and folding them
-// here would silently swallow a deep link into the wrong section.
-// `privacy` and `about` must not be listed either — they own nav items, and
-// mapping them to General used to send deep links to the wrong section with
-// the wrong nav item highlighted.
+// Retired cloud and telemetry settings deep links land on local General.
 function normalizeSettingsSection(section: SettingsSection): SettingsSection {
   switch (section) {
+    case 'privacy':
+    case 'workspace':
     case 'language':
     case 'appearance':
     case 'notifications':
@@ -4466,17 +4461,6 @@ export function SettingsDialog({
             </button>
             <button
               type="button"
-              className={`settings-nav-item${activeSection === 'privacy' ? ' active' : ''}`}
-              onClick={() => setActiveSection('privacy')}
-            >
-              <Icon name="eye" size={18} />
-              <span>
-                <strong>{t('settings.privacy')}</strong>
-                <small>{t('settings.privacyHint')}</small>
-              </span>
-            </button>
-            <button
-              type="button"
               className={`settings-nav-item${activeSection === 'about' ? ' active' : ''}`}
               onClick={() => setActiveSection('about')}
             >
@@ -6097,10 +6081,6 @@ export function SettingsDialog({
               chatAgentId={cfg.mode === 'daemon' ? cfg.agentId ?? null : null}
               chatModel={selectedMemoryChatModel}
             />
-          ) : null}
-
-          {activeSection === 'privacy' ? (
-            <PrivacySection cfg={cfg} setCfg={setCfg} />
           ) : null}
 
           {activeSection === 'about' ? (

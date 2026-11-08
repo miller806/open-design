@@ -293,7 +293,9 @@ async function findCloudSignInButton() {
 }
 
 async function openLocalRuntimeSetup() {
-  fireEvent.click(await screen.findByRole('button', { name: /^Local AI$/i }));
+  if (!screen.queryByText('Local CLI')) {
+    fireEvent.click(await screen.findByRole('button', { name: /^Local AI$/i }));
+  }
   expect(await screen.findByText('Local CLI')).toBeTruthy();
 }
 
@@ -315,6 +317,27 @@ beforeEach(() => {
   globalThis.fetch = originalFetch;
   globalThis.ResizeObserver = ResizeObserverMock as typeof ResizeObserver;
   analyticsMocks.track.mockReset();
+});
+
+describe('personal edition onboarding', () => {
+  it('opens local CLI setup directly without fetching official login status', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({}));
+    globalThis.fetch = fetchMock as typeof fetch;
+    renderOnboarding({ agents: [cliAgent()] });
+
+    expect(await screen.findByText('Local CLI')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Sign up \/ Log in/i })).toBeNull();
+    expect(fetchMock.mock.calls.some((args: unknown[]) =>
+      String(args[0]).includes('/api/integrations/vela/status'),
+    )).toBe(false);
+  });
+
+  it('preserves API setup when reopening onboarding with an API configuration', async () => {
+    globalThis.fetch = vi.fn(async () => jsonResponse({})) as typeof fetch;
+    const props = renderOnboarding({ config: baseConfig({ mode: 'api' }) });
+    expect(await screen.findByRole('heading', { name: 'Bring Your Own Key' })).toBeTruthy();
+    expect(props.onModeChange).not.toHaveBeenCalledWith('daemon');
+  });
 });
 
 describe('EntryShell settings menu', () => {

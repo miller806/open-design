@@ -5,7 +5,6 @@ import { afterEach, expect, it, vi } from 'vitest';
 
 import { FileOpsSummary } from '../../src/components/FileOpsSummary';
 import { FileViewer } from '../../src/components/FileViewer';
-import { REMIX_ICON_PATHS } from '../../src/components/remix-icon-paths';
 import type { ProjectFile } from '../../src/types';
 
 afterEach(() => {
@@ -13,7 +12,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it('uses the Owner share-forward glyph at both HTML Share entry points (OPEND-3535)', () => {
+it('keeps local export without exposing toolbar or artifact-card publication', () => {
   vi.stubGlobal('fetch', vi.fn(async () => Response.json({})));
   const file: ProjectFile = {
     name: 'index.html', path: 'index.html', type: 'file', size: 100,
@@ -31,16 +30,8 @@ it('uses the Owner share-forward glyph at both HTML Share entry points (OPEND-35
   );
   const viewer = render(<FileViewer projectId="project-1" projectKind="prototype" file={file}
     liveHtml="<html><body>Hello</body></html>" />);
-  const toolbarIcon = within(viewer.container)
-    .getByRole('button', { name: /^Share$/ }).querySelector('svg');
-  const cardIcon = screen.getByTestId('artifact-card-publish-index.html').querySelector('svg');
-  // Compare the actual rendered geometry, not a mock's component name.
-  for (const icon of [toolbarIcon, cardIcon]) {
-    expect(icon?.querySelector('path')).toHaveAttribute('d', REMIX_ICON_PATHS['share-forward-line']);
-    expect(icon).toHaveAttribute('fill', 'currentColor');
-    expect(icon).toHaveAttribute('viewBox', '0 0 24 24');
-  }
-  // Each surface keeps its existing icon-box scale.
-  expect(toolbarIcon).toHaveAttribute('width', '15');
-  expect(cardIcon).toHaveAttribute('width', '12');
+  const exportButton = within(viewer.container).getByRole('button', { name: /^Export$/ });
+  expect(exportButton).toHaveAttribute('data-artifact-anchor');
+  expect(within(viewer.container).queryByRole('button', { name: /^Share$/ })).toBeNull();
+  expect(screen.queryByTestId('artifact-card-publish-index.html')).toBeNull();
 });

@@ -407,25 +407,32 @@ const PLUGIN_LIST_BOOLEAN_FLAGS = new Set([
   'bundled', 'no-bundled',
 ]);
 
+function runRetiredCloudCommand(args: string[]): void {
+  const error = { code: 'NOT_FOUND', message: 'Official cloud features are not available in the personal edition.' };
+  if (args.includes('--json')) process.stdout.write(JSON.stringify({ error }) + '\n');
+  else console.error(error.message);
+  process.exitCode = 2;
+}
+
 const SUBCOMMAND_MAP = {
   agent: runAgent,
   artifacts: runArtifacts,
   media: runMedia,
   mcp: runMcp,
-  amr: runAmr,
-  collab: runCollab,
-  'message-center': runMessageCenter,
+  amr: runRetiredCloudCommand,
+  collab: runRetiredCloudCommand,
+  'message-center': runRetiredCloudCommand,
   research: runResearch,
   plugin: runPlugin,
   ui: runUi,
   marketplace: runMarketplace,
-  share: runShare,
+  share: runRetiredCloudCommand,
   comment: runComment,
   brand: runBrand,
   brands: runBrand,
   project: runProject,
   strategy: runStrategy,
-  workspace: runWorkspace,
+  workspace: runRetiredCloudCommand,
   automation: runAutomation,
   automations: runAutomation,
   memory: runMemory,
@@ -440,7 +447,7 @@ const SUBCOMMAND_MAP = {
   skill: runSkills,
   skills: runSkills,
   'design-systems': runDesignSystems,
-  resource: runResource,
+  resource: runRetiredCloudCommand,
   craft: runCraft,
   diagnostics: runDiagnostics,
   export: runExport,
@@ -1214,20 +1221,11 @@ function printRootHelp() {
       schedule, trigger, or harvest results from a routine without
       opening the web UI.
 
-  od message-center <list|read|read-all> [args]
-      Read and acknowledge message-center inbox items through the same
-      daemon endpoints the bell UI uses.
 
-  od amr <login|status> [args]
-      Start Vela browser sign-in or inspect the current Vela account through
-      the local OpenDesign daemon.
 
   od memory tree <list|view|edit|move> [args]
       Inspect and edit the memory tree that is injected into agent prompts.
 
-  od share <open-design|url> [options]
-      Build localized social-share targets for the OpenDesign repo or a
-      deployed project URL. Use --json for scripted integrations.
 
   od comment <list|create|update|status|delete> [args]
       Manage project comments through the same daemon API as the workspace UI.
@@ -7682,7 +7680,7 @@ async function runProjectShare(args) {
 }
 
 async function runProject(args) {
-  if (args[0] === 'share') return runProjectShare(args.slice(1));
+  if (args[0] === 'share') return runRetiredCloudCommand(args.slice(1));
   if (args.length === 0 || args[0] === 'help' || args.includes('--help') || args.includes('-h')) {
     console.log(`Usage:
   od project create [--name "<title>"] [--skill <id>] [--design-system <id>]
@@ -7704,20 +7702,6 @@ async function runProject(args) {
                                           Restore the daemon-selected default
                                           scenario with a snapshot CAS guard.
   od project delete <id>                  Delete a project.
-  od project share preflight <id> --path <file> [--json]
-                    Inspect included and missing references before publishing.
-                    Exits 1 when the plan has blockers (publish would be
-                    refused); each blocker prints a fix to paste to an agent.
-  od project share publish <id> --path <file> [--json]
-                    Publish a project file.
-  od project share resume <id> --path <file> [--json]
-                    Resume sharing through the same stable-alias lifecycle as the UI.
-  od project share get <id> --path <file> [--json]
-                    Read the current publication.
-  od project share status <id> [--path <file>] [--local-only] [--json]
-                    Project binding history, or file lifecycle with --path.
-  od project share stop <id> --path <file> --slug <slug> [--json]
-                    Stop the stable public alias; its identity is retained for resume.
   od project revoke-public-link <id> --path <file> --url <public-url>
                     Revoke a public file link whose local publication record
                     was lost during an older daemon restart or upgrade.

@@ -9,7 +9,7 @@ import {
   workspaceAnalyticsDimensions,
 } from '../../analytics/workspace';
 import type { Project } from '../../types';
-import { useProjectShareHistoryState } from '../share/useProjectShareHistory';
+import { useProjectShareHistoryState, type ProjectShareReadStatus } from '../share/useProjectShareHistory';
 import { currentWorkspaceAccountGeneration } from '../../collab/workspace-identity';
 
 /** Return `false` (or reject) when the daemon refused or the request failed;
@@ -40,8 +40,12 @@ export function useProjectDeleteFlow(input: {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const accountGeneration = currentWorkspaceAccountGeneration();
   const { history, status } = useProjectShareHistoryState(target && workspaceContext ? target.id : undefined, workspaceContext, 'delete-confirmation');
-  const shareReadStatus = target && !workspaceContext ? 'error' : status;
-  const activeShareCount = history ? history.publications.filter(publication => publication.status === 'active').length : null;
+  // Public sharing does not exist in the personal edition, so no sharing read
+  // may gate deletion. A local project confirms and deletes on its own.
+  const shareReadStatus: ProjectShareReadStatus = workspaceContext ? status : 'ready';
+  const activeShareCount = workspaceContext && history
+    ? history.publications.filter(publication => publication.status === 'active').length
+    : 0;
 
   const request = useCallback((project: Project) => {
     setFailed(false);
@@ -57,7 +61,7 @@ export function useProjectDeleteFlow(input: {
   }, [pending]);
 
   const commit = useCallback(async () => {
-    if (!target || !onDelete || pending || inFlight.current || shareReadStatus !== 'ready' || activeShareCount === null
+    if (!target || !onDelete || pending || inFlight.current || shareReadStatus !== 'ready'
       || accountGeneration !== currentWorkspaceAccountGeneration()) return;
     inFlight.current = true;
     const startedAt = performance.now();

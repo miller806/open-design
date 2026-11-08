@@ -21,7 +21,6 @@ import {
   DEFAULT_FAILURE_SOUND_ID,
   DEFAULT_SUCCESS_SOUND_ID,
 } from '../utils/notifications';
-import { randomUUID } from '../utils/uuid';
 
 const STORAGE_KEY = 'open-design:config';
 const CONFIG_MIGRATION_VERSION = 3;
@@ -103,16 +102,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   orbit: DEFAULT_ORBIT,
   projectLocations: [],
   defaultProjectLocationId: 'default',
-  // Telemetry defaults to ON so fresh-install users emit onboarding /
-  // ui_click events from the first frame. The disclosure modal still
-  // appears after `onboardingCompleted` flips, and Settings → Privacy
-  // remains the one-click opt-out. Without these defaults the gate at
-  // `daemon/src/analytics.ts` (`if (telemetry?.metrics !== true) return`)
-  // dropped every event fired during onboarding because no consent
-  // existed yet — observed live on the prerelease.10 QA run, which left
-  // zero `page_view pn=onboarding` rows on PostHog despite the user
-  // completing the flow.
-  telemetry: { metrics: true, content: true },
+  telemetry: { metrics: false, content: false, artifactManifest: false },
 };
 
 /** Well-known providers with pre-filled base URLs. */
@@ -678,6 +668,20 @@ function migrateRetiredKnownProviderModel(
   return true;
 }
 
+/** Discard retired cloud choices without changing the user's local setup. */
+function normalizePersonalRuntime(config: AppConfig): AppConfig {
+  const next = { ...config, telemetry: { metrics: false, content: false, artifactManifest: false } };
+  if (next.agentId === 'amr') {
+    next.agentId = null;
+    if (next.mode === 'daemon') next.onboardingCompleted = false;
+  }
+  if (next.agentModels?.amr) {
+    const { amr: _cloudModel, ...localModels } = next.agentModels;
+    next.agentModels = localModels;
+  }
+  return next;
+}
+
 export function loadConfig(): AppConfig {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -815,7 +819,7 @@ export function loadConfig(): AppConfig {
       }
     }
 
-    return merged;
+    return normalizePersonalRuntime(merged);
   } catch {
     return {
       ...DEFAULT_CONFIG,
@@ -1044,7 +1048,7 @@ function sanitizeAgentCliEnv(agentCliEnv: AppConfig['agentCliEnv']): AppConfig['
 
 export function saveConfig(config: AppConfig): void {
   const sanitized: AppConfig = {
-    ...config,
+    ...normalizePersonalRuntime(config),
     agentCliEnv: sanitizeAgentCliEnv(config.agentCliEnv),
   };
   for (const key of DAEMON_OWNED_KEYS) {
@@ -1091,7 +1095,7 @@ export function mergeDaemonConfig(
   daemonConfig: AppConfigPrefs | null,
 ): AppConfig {
   const next = { ...localConfig };
-  if (!daemonConfig) return next;
+  if (!daemonConfig) return normalizePersonalRuntime(next);
 
   next.onboardingCompleted = ratchetOnboardingCompleted(
     localConfig.onboardingCompleted,
@@ -1140,31 +1144,6 @@ export function mergeDaemonConfig(
     // has resolved the first-run prompt and should not see it again.
     next.privacyDecisionAt = Date.now();
   }
-  // Default-on reporting. Unless the user has explicitly opted out
-  // (Settings → "Don't share", which persists telemetry.metrics === false
-  // together with installationId: null), an install reports with the
-  // product's default telemetry channels on and carries a stable
-  // installationId. This is the single source of the "Opted out" state:
-  // previously an upgraded or never-prompted install could sit with
-  // telemetry on but no id (the daemon ships a metrics+content default but
-  // never mints an id), which the Settings → Privacy field rendered as
-  // "Opted out" even though the user never declined. We mint the id and
-  // keep the default channels on so the displayed state matches the product
-  // default — the same metrics+content surface the first-run banner's
-  // "Share" choice enables (artifactManifest stays off, as it
-  // does there).
-  // This does NOT override an explicit opt-out: metrics === false short-
-  // circuits the whole block, and any channel the user already turned off
-  // is preserved via the nullish-coalesce.
-  const explicitlyOptedOut = next.telemetry?.metrics === false;
-  if (!explicitlyOptedOut && !next.installationId) {
-    next.installationId = randomUUID();
-    next.telemetry = {
-      metrics: true,
-      content: next.telemetry?.content ?? true,
-      artifactManifest: next.telemetry?.artifactManifest ?? false,
-    };
-  }
   if (daemonConfig.allowSilentUpdates !== undefined) {
     next.allowSilentUpdates = daemonConfig.allowSilentUpdates;
   } else {
@@ -1179,7 +1158,7 @@ export function mergeDaemonConfig(
   if (daemonConfig.defaultProjectLocationId !== undefined) {
     next.defaultProjectLocationId = daemonConfig.defaultProjectLocationId ?? 'default';
   }
-  return next;
+  return normalizePersonalRuntime(next);
 }
 
 export function mergeDaemonMediaProviders(

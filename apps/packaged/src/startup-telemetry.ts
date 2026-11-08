@@ -377,64 +377,8 @@ export async function captureStartupFailure(
   },
   deps: CaptureDeps = {},
 ): Promise<void> {
-  const key = args.posthogKey?.trim();
-  if (!key) return; // fork builds / no key → no-op, zero network
-  const host = (args.posthogHost?.trim() || DEFAULT_HOST).replace(/\/+$/, "");
-  const fetchImpl = deps.fetchImpl ?? fetch;
-  const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const now = deps.now ?? (() => new Date().toISOString());
-  const insertId = deps.insertId ?? randomInsertId();
-  const appVersion =
-    typeof args.properties.app_version === "string" ? args.properties.app_version : null;
-  const metric = isClientMetricEventName(args.event) ? parseClientMetricEvent(args.event, args.properties) : null;
-  if (isClientMetricEventName(args.event) && !metric) return;
-  const body = JSON.stringify({
-    api_key: key,
-    event: args.event,
-    distinct_id: args.distinctId,
-    // Metric envelopes are already normalized and validated; the legacy
-    // crash envelope below must not overwrite their schema or client type.
-    properties: metric ? { ...metric, $insert_id: insertId } : {
-      ...args.properties,
-      // Shared safety-event envelope, mirroring captureSafety in
-      // apps/daemon/src/analytics.ts. posthog-node-style manual enrichment:
-      // the SDK auto-fills $os/$insert_id for posthog-js but not for server
-      // emits, and dashboards filter on env / event_schema_version.
-      event_id: insertId,
-      event_schema_version: EVENT_SCHEMA_VERSION,
-      env: resolveTelemetryEnv(),
-      device_id: args.distinctId,
-      client_type: CLIENT_TYPE,
-      capture_source: CAPTURE_SOURCE,
-      ui_version: appVersion,
-      $os: osName(),
-      $os_version: release(),
-      $insert_id: insertId,
-    },
-    timestamp: args.occurredAt ?? now(),
-  });
-
-  let acceptingResponse = true;
-  const send = (async () => {
-    try {
-      const response = await fetchImpl(`${host}/capture/`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body,
-      });
-      if (response.ok && acceptingResponse) deps.onCaptured?.();
-    } catch {
-      // analytics failure must never look like a product error
-    }
-  })();
-
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<void>((resolve) => {
-    timer = setTimeout(resolve, timeoutMs);
-  });
-  await Promise.race([send, timeout]);
-  acceptingResponse = false;
-  if (timer) clearTimeout(timer);
+  // Packaged personal builds do not send launch or crash reports.
+  return;
 }
 
 // CS02-local event names pending CS01 registry alignment. Unlike the legacy
