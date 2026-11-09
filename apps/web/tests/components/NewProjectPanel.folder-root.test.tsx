@@ -71,6 +71,17 @@ it('creates the project in the folder the user picked', async () => {
   expect(onCreate).not.toHaveBeenCalled();
 });
 
+it('uses the name the user typed for the chosen folder', async () => {
+  renderPanel();
+  fireEvent.change(await screen.findByPlaceholderText(/project name/i), {
+    target: { value: 'Q3 Landing' },
+  });
+  fireEvent.click(screen.getByTestId('new-project-choose-folder'));
+  await waitFor(() => expect(screen.getByTestId('new-project-folder-path')).toBeTruthy());
+  fireEvent.click(screen.getByTestId('new-project-create'));
+  await waitFor(() => expect(importFolder).toHaveBeenCalledWith(pickedFolder, 'Q3 Landing'));
+});
+
 it('cannot create a project before a folder is chosen', async () => {
   renderPanel();
   const create = await screen.findByTestId('new-project-create');

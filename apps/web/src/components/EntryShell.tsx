@@ -569,6 +569,9 @@ interface Props {
   onCreateInFolder?: (baseDir: string, name: string) => Promise<void> | void;
   onImportFolder?: (baseDir: string) => Promise<void> | void;
   onImportFolderResponse?: (response: OpenDesignHostProjectImportSuccess) => Promise<void> | void;
+  /** Open the New Project panel once (workbench rail → Home). */
+  pendingNewProject?: boolean;
+  onPendingNewProjectHandled?: () => void;
   onOpenProject: (
     id: string,
     fileName?: string,
@@ -691,6 +694,8 @@ export function EntryShell({
   onCreateInFolder,
   onImportFolder,
   onImportFolderResponse,
+  pendingNewProject = false,
+  onPendingNewProjectHandled,
   onOpenProject,
   onOpenLiveArtifact,
   onDeleteProject,
@@ -1343,6 +1348,7 @@ export function EntryShell({
     }
   }, [workspaceLoading, isWorkspaceOnlyView, hasWorkspaceContext]);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
+  const pendingNewProjectHandledRef = useRef(false);
   // Home has NO low-balance surface, and since T66 (product 2026-09-07) neither
   // does anywhere else: a positive balance produces nothing at all and the run
   // just starts. Home reached that end state first — ruling 2026-09-06 (T53),
@@ -1541,31 +1547,29 @@ export function EntryShell({
     changeView('integrations');
   }
 
+  // Asked for from outside the entry shell (the workbench rail), which renders
+  // on a route that has no New Project panel of its own.
+  useEffect(() => {
+    if (!pendingNewProject) {
+      pendingNewProjectHandledRef.current = false;
+      return;
+    }
+    if (pendingNewProjectHandledRef.current) return;
+    pendingNewProjectHandledRef.current = true;
+    openNewProject('prototype');
+    onPendingNewProjectHandled?.();
+  }, [pendingNewProject, onPendingNewProjectHandled]);
+
   function openNewProject(tab: CreateTab = 'prototype') {
     setNewProjectInitialTab(tab);
     setNewProjectOpen(true);
   }
 
   function startBlankProjectFromRail() {
-    void Promise.resolve(
-      onCreateProject({
-        name: t('common.untitled'),
-        skillId: null,
-        designSystemId: null,
-        // No user-typed name exists yet — mark it `generated` (the same tag
-        // `handleCreateProjectFromDesignSystem` and the New Project panel's
-        // blank/no-name path use) so `canAutoRenameProjectFromPrompt` stays
-        // eligible once the user's first in-project prompt or the agent's
-        // own generated title arrives. Without this the project is stuck at
-        // "未命名" forever: this rail (the Drafts / All-projects empty-state
-        // "创建" button) is the only reachable way to open a truly metadata-
-        // less blank project, and every other create path already tags its
-        // fallback name with a `nameSource` the rename gate recognizes.
-        metadata: { kind: 'other', nameSource: 'generated' },
-      }),
-    ).catch((err) => {
-      console.warn('Failed to create blank project from entry rail', err);
-    });
+    // A blank project is not created silently any more: the panel collects the
+    // name and the folder, so the project never starts life as "Untitled" in a
+    // managed directory the user did not choose.
+    openNewProject('prototype');
   }
 
   function handleCreate(input: CreateInput) {

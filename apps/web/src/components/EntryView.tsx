@@ -140,6 +140,8 @@ interface Props {
     file: File,
   ) => Promise<ImportClaudeDesignOutcome | void> | ImportClaudeDesignOutcome | void;
   onCreateInFolder?: (baseDir: string, name: string) => Promise<void> | void;
+  pendingNewProject?: boolean;
+  onPendingNewProjectHandled?: () => void;
   onImportFolder?: (baseDir: string) => Promise<void> | void;
   onImportFolderResponse?: (response: OpenDesignHostProjectImportSuccess) => Promise<void> | void;
   onOpenProject: (
@@ -306,6 +308,8 @@ export function EntryView({
   onCreatePluginShareProject,
   onImportClaudeDesign,
   onCreateInFolder,
+  pendingNewProject,
+  onPendingNewProjectHandled,
   onImportFolder,
   onImportFolderResponse,
   onOpenProject,
@@ -437,6 +441,8 @@ export function EntryView({
       onCreatePluginShareProject={onCreatePluginShareProject}
       onImportClaudeDesign={onImportClaudeDesign}
       {...(onCreateInFolder ? { onCreateInFolder } : {})}
+      {...(pendingNewProject ? { pendingNewProject } : {})}
+      {...(onPendingNewProjectHandled ? { onPendingNewProjectHandled } : {})}
       {...(onImportFolder ? { onImportFolder } : {})}
       {...(onImportFolderResponse ? { onImportFolderResponse } : {})}
       onOpenProject={onOpenProject}

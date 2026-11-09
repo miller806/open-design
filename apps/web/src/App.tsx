@@ -1158,6 +1158,8 @@ function AppInner() {
     }, completionFeedbackGestureConsumedRef.current);
   }, [config.notifications?.desktopEnabled, config.notifications?.soundEnabled]);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Set by the workbench rail; consumed once by EntryShell's New Project panel.
+  const [pendingNewProject, setPendingNewProject] = useState(false);
   // Surfaced when a Home-picked working dir could not be applied to a freshly
   // created project (expired/invalid desktop token, daemon rejection). Without
   // this the failure was swallowed and the user believed their folder was in
@@ -6128,6 +6130,8 @@ function AppInner() {
         onCreatePluginShareProject={handleCreatePluginShareProject}
         onImportClaudeDesign={handleImportClaudeDesign}
         onCreateInFolder={handleCreateInFolder}
+        pendingNewProject={pendingNewProject}
+        onPendingNewProjectHandled={() => setPendingNewProject(false)}
         onImportFolder={handleImportFolder}
         onImportFolderResponse={handleImportFolderResponse}
         onOpenProject={handleOpenProject}
@@ -6244,14 +6248,9 @@ function AppInner() {
               // the wrong shape here: from the workbench the user wants another
               // project open, not their current one closed behind a composer.
               onNewProject={() => {
-                void handleCreateProject({
-                  name: t('common.untitled'),
-                  skillId: null,
-                  designSystemId: null,
-                  // Same `generated` tag every other blank create uses, so an
-                  // agent-produced title can still rename the project later.
-                  metadata: { kind: 'other', nameSource: 'generated' },
-                });
+                // The panel is where a project gets its name and its folder.
+                setPendingNewProject(true);
+                navigate({ kind: 'home', view: 'home' });
               }}
               onOpenSettings={() => openSettings()}
               onDeleteProject={handleDeleteProject}
