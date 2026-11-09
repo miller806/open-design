@@ -6243,6 +6243,7 @@ function AppInner() {
               activeProjectId={activeProject.id}
               onOpenProject={(id) => { void handleOpenProject(id); }}
               onBrowseProjects={() => navigate({ kind: 'home', view: 'projects' })}
+              onRenameProject={(id, name) => handleRenameProject(id, name)}
               // 新建项目 creates a blank project and lands IN it — the entry
               // rail's behaviour, which this rail mirrors. Bouncing to Home was
               // the wrong shape here: from the workbench the user wants another

@@ -58,6 +58,7 @@ export function ProjectsRail({
   activeProjectId,
   onOpenProject,
   onBrowseProjects,
+  onRenameProject,
   onNewProject,
   onOpenSettings,
   onDeleteProject,
@@ -66,6 +67,7 @@ export function ProjectsRail({
   activeProjectId: string;
   onOpenProject: (id: string) => void;
   onBrowseProjects: () => void;
+  onRenameProject?: (id: string, name: string) => Promise<unknown> | void;
   onNewProject: () => void;
   onOpenSettings: () => void;
   onDeleteProject?: ProjectsRailDeleteHandler;
@@ -73,6 +75,10 @@ export function ProjectsRail({
   const t = useT();
   const [collapsed, setCollapsed] = useState<boolean>(() => readCollapsedPreference());
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
+  // Rename happens in place on the row: a design tool's file panel should not
+  // send the user to another screen to fix a name.
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
   const [deletePending, setDeletePending] = useState(false);
   const [deleteFailed, setDeleteFailed] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -158,19 +164,60 @@ export function ProjectsRail({
                 data-testid="projects-rail-row"
                 data-active={active ? 'true' : undefined}
               >
-                <button
-                  type="button"
-                  className={styles.rowMain}
-                  aria-current={active ? 'true' : undefined}
-                  data-testid="projects-rail-row-open"
-                  onClick={() => onOpenProject(project.id)}
-                  title={collapsed ? name : undefined}
-                >
-                  <span className={styles.avatar} aria-hidden>{initialFor(name)}</span>
-                  {collapsed ? <span className={styles.srOnly}>{name}</span> : (
-                    <span className={styles.name}>{name}</span>
-                  )}
-                </button>
+                {renamingId === project.id ? (
+                  <form
+                    className={styles.rowMain}
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      const next = renameDraft.trim();
+                      setRenamingId(null);
+                      if (!next || next === name) return;
+                      void onRenameProject?.(project.id, next);
+                    }}
+                  >
+                    <input
+                      className={styles.renameInput}
+                      value={renameDraft}
+                      autoFocus
+                      aria-label={t('designs.menuRename')}
+                      data-testid="projects-rail-rename-input"
+                      onChange={(event) => setRenameDraft(event.currentTarget.value)}
+                      onBlur={() => setRenamingId(null)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape') setRenamingId(null);
+                      }}
+                    />
+                  </form>
+                ) : (
+                  <button
+                    type="button"
+                    className={styles.rowMain}
+                    aria-current={active ? 'true' : undefined}
+                    data-testid="projects-rail-row-open"
+                    onClick={() => onOpenProject(project.id)}
+                    title={collapsed ? name : undefined}
+                  >
+                    <span className={styles.avatar} aria-hidden>{initialFor(name)}</span>
+                    {collapsed ? <span className={styles.srOnly}>{name}</span> : (
+                      <span className={styles.name}>{name}</span>
+                    )}
+                  </button>
+                )}
+                {onRenameProject && !collapsed && renamingId !== project.id ? (
+                  <button
+                    type="button"
+                    className={styles.rowDelete}
+                    onClick={() => {
+                      setRenamingId(project.id);
+                      setRenameDraft(project.name ?? '');
+                    }}
+                    aria-label={t('designs.menuRename')}
+                    title={t('designs.menuRename')}
+                    data-testid="projects-rail-rename"
+                  >
+                    <Icon name="edit" size={14} />
+                  </button>
+                ) : null}
                 {onDeleteProject && !collapsed ? (
                   <button
                     type="button"

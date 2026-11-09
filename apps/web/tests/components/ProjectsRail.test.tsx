@@ -42,6 +42,18 @@ function view(overrides: Partial<Parameters<typeof ProjectsRail>[0]> = {}) {
 }
 
 describe('projects rail', () => {
+  it('renames a project in place from its row', async () => {
+    const onRenameProject = vi.fn();
+    view({ onRenameProject });
+    const [row] = screen.getAllByTestId('projects-rail-row');
+    if (!row) throw new Error('row missing');
+    fireEvent.click(within(row).getByTestId('projects-rail-rename'));
+    const input = within(row).getByTestId('projects-rail-rename-input');
+    fireEvent.change(input, { target: { value: '春季海报' } });
+    fireEvent.submit(input.closest('form') as HTMLFormElement);
+    await waitFor(() => expect(onRenameProject).toHaveBeenCalledWith('one', '春季海报'));
+  });
+
   // The workbench used to hide the entry rail the moment a project opened, so
   // switching projects meant going back to Home. The rail is the fix: it has to
   // list every project, mark the one that is open, and switch in one click.
