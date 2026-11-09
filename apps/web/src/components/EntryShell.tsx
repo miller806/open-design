@@ -77,6 +77,7 @@ import type {
 } from '@open-design/contracts/analytics';
 import { agentIdToTracking } from '@open-design/contracts/analytics';
 import { useI18n, useT } from '../i18n';
+import { usePersonalMode } from '../lib/personal-mode';
 import { navigate, useRoute } from '../router';
 import type {
   AgentInfo,
@@ -727,12 +728,15 @@ export function EntryShell({
   // unresolved or unavailable authority into an anonymous, unbound create.
   const workspaceContextState = useWorkspaceContext();
   const { context: workspaceContext, loading: workspaceLoading } = workspaceContextState;
-  const accountFooterState = resolveEntryRailAccountFooterState(
-    workspaceContextState,
-    amrLoggedIn,
-    amrSessionState,
-  );
-  const railWorkspaceContext = accountFooterState === 'sign-in'
+  const personalMode = usePersonalMode();
+  const accountFooterState = personalMode
+    ? 'hidden' as const
+    : resolveEntryRailAccountFooterState(
+        workspaceContextState,
+        amrLoggedIn,
+        amrSessionState,
+      );
+  const railWorkspaceContext = (personalMode || accountFooterState === 'sign-in')
     ? null
     : workspaceContext;
   const usesOpenDesignCloud = config.mode === 'daemon' && config.agentId === 'amr';
@@ -748,11 +752,26 @@ export function EntryShell({
     // status and a definitive credential rejection return to the existing
     // Cloud identity gate. Passive reauthentication preserves the saved model
     // source and Home's locally persisted, not-yet-sent draft.
+    //
+    // Personal mode has no cloud identity to gate: bouncing to the onboarding
+    // sign-in step would make the app unusable without an account, which is the
+    // exact thing this mode removes.
+    if (personalMode) return;
     const selectedCloudIdentityRejected = usesOpenDesignCloud && amrLoggedIn === false;
     if ((!selectedCloudIdentityRejected && !amrAuthRequired) || view === 'onboarding') return;
     navigate({ kind: 'home', view: 'onboarding' }, { replace: true });
-  }, [amrAuthRequired, amrLoggedIn, usesOpenDesignCloud, view]);
-  const accountFooterNotice: ReactNode = null;
+  }, [amrAuthRequired, amrLoggedIn, personalMode, usesOpenDesignCloud, view]);
+  let accountFooterNotice: ReactNode = null;
+  if (personalMode) {
+    // No cloud account footer: the sign-in / syncing / recovering cards are all
+    // cloud-identity states.
+  } else if (accountFooterState === 'syncing') {
+    accountFooterNotice = <RailAccountSyncTip />;
+  } else if (accountFooterState === 'recovering') {
+    accountFooterNotice = <RailAccountRecoveryTip />;
+  } else if (accountFooterState === 'sign-in') {
+    accountFooterNotice = <CloudSignInTip />;
+  }
   const workspaceContextRef = useRef(workspaceContext);
   workspaceContextRef.current = workspaceContext;
   const workspaceContextStateRef = useRef(workspaceContextState);
@@ -2278,7 +2297,7 @@ export function EntryShell({
                 {...homeViewProps}
                 isActive={view === 'home'}
                 referralNotice={<ReferralNotice accountId={amrLoggedIn === true ? amrAccountId : null} profile={amrRegistrationStatus?.profile?.trim() || amrProfile} consoleOrigin={amrRegistrationStatus?.consoleOrigin} active={view === 'home'} context={homeFundingContext} billing={workspaceBillingResponse} />}
-                inviteSurface={<HomeInviteSurface signedOut={amrLoggedIn === false} identityReady={!workspaceContextState.loading && !workspaceContextState.identityChangePending && !workspaceContextState.failure} accountId={amrLoggedIn === true ? amrAccountId : null} context={railWorkspaceContext} active={view === 'home'} onSignInRequested={() => { setInviteSignInRequest('start'); navigate({ kind: 'home', view: 'onboarding' }); }} openAfterSignIn={inviteSignInRequest === 'waiting'} onSignInInviteConsumed={() => setInviteSignInRequest(null)} />}
+                inviteSurface={personalMode ? null : <HomeInviteSurface signedOut={amrLoggedIn === false} identityReady={!workspaceContextState.loading && !workspaceContextState.identityChangePending && !workspaceContextState.failure} accountId={amrLoggedIn === true ? amrAccountId : null} context={railWorkspaceContext} active={view === 'home'} onSignInRequested={() => { setInviteSignInRequest('start'); navigate({ kind: 'home', view: 'onboarding' }); }} openAfterSignIn={inviteSignInRequest === 'waiting'} onSignInInviteConsumed={() => setInviteSignInRequest(null)} />}
                 /* Home is the one composer in the shell and consumes the page
                    handoff. The community view used to dock a second HomeView
                    (`variant="dock"`) with a handoff of its own; that mount
@@ -2623,9 +2642,13 @@ function OnboardingView({
 }) {
   const t = useT();
   const analytics = useAnalytics();
-  const [step, setStep] = useState(2);
+  const personalMode = usePersonalMode();
+  // Personal mode has no cloud identity to sign into, so the cloud landing
+  // (step 0) is skipped entirely: first run starts on the local runtime setup
+  // step with `local` preselected. Every later step is unchanged.
+  const [step, setStep] = useState(() => (personalMode ? 2 : 0));
   const [runtime, setRuntime] = useState<'amr' | 'local' | 'byok' | null>(
-    config.mode === 'api' ? 'byok' : 'local',
+    () => (personalMode ? 'local' : null),
   );
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [cliScanStatus, setCliScanStatus] = useState<'idle' | 'scanning' | 'done'>('idle');
@@ -3232,6 +3255,13 @@ function OnboardingView({
   function handleBackWithTracking(): void {
     emitOnboardingClick('back', 'back');
     clearAgentRevealTimers();
+    // There is no cloud landing to go back to in personal mode — step 0 is the
+    // cloud identity gate. Back out of onboarding instead of rendering an empty
+    // step.
+    if (personalMode) {
+      onFinish();
+      return;
+    }
     setRuntime(null);
     setStep(0);
   }
@@ -4021,9 +4051,27 @@ function OnboardingView({
     };
   }, [runtime, runtimeValidationConsumable]);
 
+  // Personal mode starts on the setup step instead of the cloud landing, so the
+  // CLI scan that the landing's "本地 Coding Agent" button used to trigger has
+  // to run here — otherwise the local runtime list would sit empty until the
+  // user pressed refresh.
+  const personalScanStartedRef = useRef(false);
+  useEffect(() => {
+    if (!personalMode || runtime !== 'local') return;
+    if (personalScanStartedRef.current) return;
+    personalScanStartedRef.current = true;
+    void scanCliAgents({ preferExisting: true });
+  }, [personalMode, runtime]);
+
   const primaryActionLabel = t('settings.onboardingContinue');
 
-  if (step === 0) {
+  // Cloud remains the primary identity path. Local CLI and BYOK are independent
+  // direct setup paths; authenticated users keep the full source chooser.
+  if (step === 0 && !personalMode) {
+    // A failure hands the primary button back even if the daemon still reports
+    // a login in flight: it is the only way to resume or restart from here.
+    const cloudBusy = amrLoginBusy && !amrLoginError;
+    const amrStatusResolving = !amrStatusResolved;
     return (
       <section className="onboarding-view" aria-label={t('settings.welcomeTitle')}>
         <div className="onboarding-view__body">

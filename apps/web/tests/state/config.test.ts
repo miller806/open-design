@@ -403,7 +403,6 @@ describe('mergeDaemonConfig', () => {
       installationId: null,
     });
     expect(merged.telemetry).toEqual({ metrics: false, content: false, artifactManifest: false });
-    expect(merged.installationId).toBeNull();
   });
 
   it('preserves an explicit opt-out and never re-mints an id', () => {

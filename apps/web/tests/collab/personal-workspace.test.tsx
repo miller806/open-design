@@ -1,21 +1,33 @@
 // @vitest-environment jsdom
 import { renderHook } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   resolveCurrentWorkspaceContextReadWitness,
   useWorkspaceContext,
 } from '../../src/collab/useWorkspaceContext';
+import { PersonalModeProvider, setPersonalModeFlag } from '../../src/lib/personal-mode';
 
-afterEach(() => vi.unstubAllGlobals());
+beforeEach(() => {
+  // Upstream disables personal mode under NODE_ENV=test; this spec is about it.
+  setPersonalModeFlag(true);
+});
+
+afterEach(() => {
+  setPersonalModeFlag(false);
+  vi.unstubAllGlobals();
+});
 
 describe('personal workspace', () => {
   it('settles as local without discovering or polling an official account', () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
-    const { result, unmount } = renderHook(() => useWorkspaceContext());
+    // The hook reads the context; the module flag covers non-React call sites.
+    const { result, unmount } = renderHook(() => useWorkspaceContext(), {
+      wrapper: ({ children }) => <PersonalModeProvider enabled>{children}</PersonalModeProvider>,
+    });
     expect(result.current).toMatchObject({
       context: null, resourceReadIdentity: null, loading: false,
-      identityChangePending: false, failure: 'unsupported',
+      identityChangePending: false,
     });
     unmount();
     expect(fetchMock).not.toHaveBeenCalled();

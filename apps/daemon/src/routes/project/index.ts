@@ -127,9 +127,12 @@ import {
   allProjectLocations,
   createLocationProjectDir,
   ensureProjectLocation,
+  projectFolderNameFromTitle,
+  sanitizeProjectFolderName,
   scanProjectLocation,
   writeProjectManifest,
 } from '../../project-locations.js';
+import { personalModeEnabled } from '../../app-config.js';
 import { auditDesignSystemPackage } from '../../tools-connectors-cli.js';
 import { parseOrchestratorWorkspace } from '../../workspace-contract.js';
 import { registerProjectConversationRoutes } from './conversations.js';
@@ -3071,7 +3074,12 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
   function bindUnboundProjectsToPersonalWorkspace(
     ctx: WorkspaceProjectContext,
     locations: Array<{ id: string; path: string; builtIn?: boolean }>,
+    personalMode: boolean,
   ) {
+    // Personal mode has no cloud account, so it has no workspace to adopt into:
+    // binding an orphan would only hide it from the headerless catalog the
+    // personal shell lists, and would create cloud rows for local work.
+    if (personalMode) return;
     // Legacy unbound projects predate member identities. Only the Owner of
     // their Personal workspace may adopt them; an invited member must not
     // make the owner's local drafts visible in a shared workspace.
@@ -3143,6 +3151,17 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
     return Array.from(byTaskKind.values());
   }
 
+  /**
+   * Whether this installation runs in personal (single-machine, no-cloud) mode.
+   *
+   * Read per request rather than latched at registration: the switch lives in
+   * app-config and `od config set personalMode …` must take effect on the next
+   * request, without restarting the daemon.
+   */
+  async function personalModeOn(): Promise<boolean> {
+    return personalModeEnabled(await readAppConfig(ctx.paths.RUNTIME_DATA_DIR));
+  }
+
   async function configuredProjectLocations() {
     const config = await readAppConfig(ctx.paths.RUNTIME_DATA_DIR);
     const all = allProjectLocations(PROJECTS_DIR, config.projectLocations);
@@ -3207,6 +3226,15 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
       ? config.defaultProjectLocationId.trim()
       : '';
     if (!configuredDefault || configuredDefault === BUILT_IN_PROJECT_LOCATION_ID) {
+      // Personal mode is explicitly "the folder is mine, not the system's". The
+      // built-in location is a daemon-managed directory named after a project
+      // id, which is precisely the behaviour this mode removes — so once the
+      // user has configured ANY external location, new projects default to the
+      // first one (folders are named after the project, see createProject).
+      if (personalModeEnabled(config)) {
+        const external = (await configuredProjectLocations()).find((location) => !location.builtIn);
+        if (external) return external.id;
+      }
       return BUILT_IN_PROJECT_LOCATION_ID;
     }
     const locations = await configuredProjectLocations();
@@ -3392,8 +3420,14 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
       // lookup needed (a `listWorkspaceProjectBindings` scan here would only
       // ever resolve to misses).
       /** @type {import('@open-design/contracts').ProjectsResponse} */
+      // Personal mode has exactly one user and no cloud account, so every local
+      // project is theirs: list them all instead of only the unbound ones. Without
+      // this, a project that an earlier (cloud-capable) session adopted into a
+      // Workspace would disappear from the only catalog the personal shell reads.
+      const personalMode = await personalModeOn();
+      const catalog = personalMode ? listProjects(db) : listUnboundProjects(db);
       const body = {
-        projects: listUnboundProjects(db)
+        projects: catalog
           .filter((project: any) => projectVisibleForLocations(project, locations))
           .map((project: any) => ({
             ...project,
@@ -3466,7 +3500,7 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
         }
       }
       const locations = await configuredProjectLocations();
-      bindUnboundProjectsToPersonalWorkspace(ctx, locations);
+      bindUnboundProjectsToPersonalWorkspace(ctx, locations, await personalModeOn());
       const view = typeof req.query.view === 'string' ? req.query.view : 'all';
       if (view !== 'all' && view !== 'recent' && view !== 'drafts' && view !== 'team') {
         return sendApiError(res, 400, 'BAD_REQUEST', 'view must be all, recent, drafts, or team');
@@ -3944,7 +3978,10 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
       // member before we bind the new private project to that Workspace.
       // Headerless/partial local creates remain unbound.
       const createWorkspace = {
-        context: await resolveCreatedProjectHome(req),
+        // Personal mode has no cloud identity, so a create is never bound to a
+        // Workspace: binding would move the project out of the local catalog
+        // this shell lists and write cloud rows for single-machine work.
+        context: (await personalModeOn()) ? null : await resolveCreatedProjectHome(req),
       };
       learnAssertedWorkspaceType(createWorkspace.context);
       const { id, name, projectLocationId, skillId, designSystemId, pendingPrompt, metadata, customInstructions, skipDiscoveryBrief } =
@@ -4113,6 +4150,20 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
         projectCreatePreparationDeadline,
         'resolving the project location',
       );
+      // The project folder is the user's to name: `folderName` is ONE path
+      // segment inside the selected project location. A name that cannot be a
+      // folder fails the request instead of silently falling back to the
+      // daemon-managed id directory — the point of the field is that the user
+      // chose it. Without the field the project title names the folder.
+      const requestedFolderName: unknown = req.body?.folderName;
+      if (requestedFolderName !== undefined && requestedFolderName !== null) {
+        if (sanitizeProjectFolderName(requestedFolderName) === null) {
+          return sendApiError(
+            res, 400, 'BAD_REQUEST',
+            'folderName must be a single folder name without path separators or reserved characters',
+          );
+        }
+      }
       let externalProjectDir: string | null = null;
       if (selectedLocationId !== BUILT_IN_PROJECT_LOCATION_ID) {
         const locations = await awaitProjectCreatePreparation(
@@ -4127,7 +4178,11 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
         if (getProject(db, id)) {
           return sendApiError(res, 400, 'BAD_REQUEST', 'project id already exists');
         }
-        externalProjectDir = await createLocationProjectDir(location, id);
+        externalProjectDir = await createLocationProjectDir(location, id, {
+          folderName: typeof requestedFolderName === 'string'
+            ? requestedFolderName
+            : projectFolderNameFromTitle(name, id),
+        });
       }
       // Website Clone projects that already carry the target URL explicitly
       // skip the project-opening discovery brief: the URL *is* the brief —
@@ -5623,6 +5678,37 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
     }
   });
 
+  /**
+   * Remove the storage a project owns.
+   *
+   * A project the daemon CREATED inside a registered project location owns that
+   * folder, so deleting the project has to delete it — otherwise the user's
+   * location accumulates one orphan directory per deleted project (measured: 30+
+   * of them in a test location after a session of deleting). A folder the USER
+   * imported is the opposite and is never removed here: it predates the project.
+   */
+  const removeProjectStorage = async (project: any): Promise<void> => {
+    const metadata = project?.metadata ?? null;
+    const baseDir = typeof metadata?.baseDir === 'string'
+      ? path.normalize(metadata.baseDir)
+      : null;
+    if (metadata?.importedFrom === 'project-location' && baseDir) {
+      // Only a folder strictly INSIDE a registered location — never the location
+      // root itself, a parent, or a path outside every location (a tampered
+      // metadata.baseDir must not turn a delete into an arbitrary rm -rf).
+      const locations = await configuredProjectLocations().catch(() => [] as any[]);
+      const insideLocation = locations.some((location) => {
+        const relative = path.relative(location.path, baseDir);
+        return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+      });
+      if (insideLocation) {
+        await rm(baseDir, { recursive: true, force: true }).catch(() => {});
+        return;
+      }
+    }
+    await removeProjectDir(PROJECTS_DIR, project.id).catch(() => {});
+  };
+
   app.delete('/api/projects/:id', publicFileMutationHandler(ctx.publicFileMutations, async (req, res) => {
     try {
       const project = getProject(db, req.params.id);
@@ -5680,7 +5766,9 @@ export function registerProjectRoutes(app: Express, ctx: RegisterProjectRoutesDe
       // billing and writes into a directory that no longer exists (#5468).
       await cancelRunsOwnedBy(design.runs, { projectId: project.id });
       dbDeleteProject(db, req.params.id);
-      await removeProjectDir(PROJECTS_DIR, req.params.id).catch(() => {});
+      // Storage follows the project out. `project` was read before the DB row
+      // went away, so its metadata (baseDir / importedFrom) is still intact.
+      await removeProjectStorage(project);
       const body: ProjectDeleteResponse = { ok: true, ...(shareResiduals?.length ? { shareResiduals } : {}) };
       res.json(body);
     } catch (err: any) {

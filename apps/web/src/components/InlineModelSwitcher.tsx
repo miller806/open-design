@@ -68,6 +68,7 @@ import {
 import type { AgentInfo, ApiProtocol, AppConfig, ExecMode } from '../types';
 import { apiProtocolLabel } from '../utils/apiProtocol';
 import { isVisibleLocalCliAgent } from '../utils/visibleAgents';
+import { usePersonalMode } from '../lib/personal-mode';
 import { AgentIcon } from './AgentIcon';
 import { Icon } from './Icon';
 import { modelProviderIconSrc } from './modelProviderIcon';
@@ -192,6 +193,7 @@ export function InlineModelSwitcher({
 }: Props) {
   const t = useT();
   const analytics = useAnalytics();
+  const personalMode = usePersonalMode();
   // This flag is a reserved presentation branch with no trigger wired yet.
   // It remains available for a real unpaid-audience signal reaching this
   // component without surfacing an unlimited-use claim in the model picker.
@@ -703,9 +705,9 @@ export function InlineModelSwitcher({
   const installedAgents = useMemo(
     () =>
       orderAgentsWithOpenDesignFirst(
-        agents.filter((a) => a.available && isVisibleLocalCliAgent(a)),
+        agents.filter((a) => a.available && isVisibleLocalCliAgent(a, { personalMode })),
       ),
-    [agents],
+    [agents, personalMode],
   );
   const currentAgent = useMemo(
     () => agents.find((a) => a.id === config.agentId) ?? null,

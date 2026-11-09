@@ -126,6 +126,10 @@ export interface AppConfigPrefs {
   customInstructions?: string | null;
   projectLocations?: ProjectLocationPrefs[];
   defaultProjectLocationId?: string | null;
+  // Single-machine, no-cloud mode. Hidden cloud account surfaces live behind
+  // this switch (web shell) and cloud-backed routes treat it as "unavailable"
+  // (daemon). `OD_PERSONAL_MODE` outranks it for packaged personal builds.
+  personalMode?: boolean;
   // Whether this installation runs the OD Next design strategy. Absent and
   // null both mean "unconfigured", which resolves to `active` — OD Next is the
   // default route and this key is how an installation opts out of it.
@@ -161,12 +165,32 @@ const ALLOWED_KEYS: ReadonlySet<keyof AppConfigPrefs> = new Set([
   'customInstructions',
   'projectLocations',
   'defaultProjectLocationId',
+  'personalMode',
   'odNextStrategyMode',
   'recentLinkedDirs',
 ] as const);
 
 function configFile(dataDir: string): string {
   return path.join(dataDir, 'app-config.json');
+}
+
+/**
+ * Whether this installation runs in personal (single-machine, no-cloud) mode.
+ *
+ * `OD_PERSONAL_MODE` is the process-level pin: `1`/`true` forces personal mode
+ * on regardless of the saved preference, `0`/`false` forces it off. Unset (or
+ * anything unrecognised) defers to the saved `personalMode` field. A packaged
+ * personal build sets the env var so clearing app-config cannot re-enable the
+ * cloud account surfaces, and so the daemon and the web shell always agree.
+ */
+export function personalModeEnabled(
+  config: Pick<AppConfigPrefs, 'personalMode'> | null | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const envRaw = String(env.OD_PERSONAL_MODE ?? '').trim().toLowerCase();
+  if (envRaw === '1' || envRaw === 'true') return true;
+  if (envRaw === '0' || envRaw === 'false') return false;
+  return config?.personalMode === true;
 }
 
 export function appConfigDir(projectRoot: string, env: NodeJS.ProcessEnv = process.env): string {
@@ -668,6 +692,14 @@ function applyConfigValue(
       target[key] = normalizeLocationId(value, 'default');
     } else if (value === null) {
       target[key] = null;
+    } else {
+      delete target[key];
+    }
+    return;
+  }
+  if (key === 'personalMode') {
+    if (typeof value === 'boolean') {
+      target[key] = value;
     } else {
       delete target[key];
     }

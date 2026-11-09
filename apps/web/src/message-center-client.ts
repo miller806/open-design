@@ -1,3 +1,4 @@
+import { isPersonalModeEnabled } from './lib/personal-mode';
 export type MessageCenterFilter = 'all' | 'unread' | 'read';
 
 export interface MessageCenterMessage {
@@ -110,6 +111,8 @@ export function clearAnonymousState(storage: Storage): void {
  * authoritative: there is no runtime, so there is no account.
  */
 export async function isAmrLoggedIn(): Promise<boolean> {
+  // The cloud account plane is retired: never ask the daemon for a login state.
+  if (isPersonalModeEnabled()) return false;
   const response = await fetch('/api/integrations/vela/status', { cache: 'no-store' });
   if (response.status === 503) {
     const payload = (await response.clone().json().catch(() => null)) as { error?: string } | null;

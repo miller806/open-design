@@ -697,6 +697,7 @@ import {
 } from './mcp-tokens.js';
 import {
   agentCliEnvForAgent,
+  personalModeEnabled,
   readAppConfig,
   readAppConfigSync,
   readPluginEnvKnobs,
@@ -6257,7 +6258,13 @@ export async function startServer({
     }).catch(() => undefined);
   };
   let workspaceAnalyticsService: AnalyticsService | null = null;
-  registerCollabContextRoutes(app, {
+  // Personal mode has no cloud account, so the Workspace plane is not part of
+  // this daemon: its routes are never mounted. Unmounted (not merely refusing
+  // per request) is what "the cloud is gone" has to mean at the HTTP boundary —
+  // there is nothing to call, nothing to poll, and nothing that can start
+  // hitting vela behind the UI's back.
+  const cloudPlaneMounted = !personalModeEnabled(readAppConfigSync(RUNTIME_DATA_DIR));
+  if (cloudPlaneMounted) registerCollabContextRoutes(app, {
     workspaceContext: collab.workspaceContext,
     configuredEnv: configuredAmrEnv,
     verifyWorkspaceReadAuthority: verifyWorkspaceContextReadAuthority,
@@ -7187,7 +7194,9 @@ export async function startServer({
     workspaceBillingRuntime.interestedKeys().map((interest) => interest.workspaceId),
   );
 
-  registerTeamResourceRoutes(app, { teamResources: collab.teamResources });
+  if (cloudPlaneMounted) {
+    registerTeamResourceRoutes(app, { teamResources: collab.teamResources });
+  }
 
   // Team resource sharing is request-scoped. The browser's explicit Workspace
   // headers choose a membership, then the signed-in account's authoritative
@@ -8221,6 +8230,11 @@ export async function startServer({
   ): Promise<void> => {
     const requestedWorkspaceId = workspaceId?.trim();
     if (!requestedWorkspaceId) return;
+    // Personal mode: no cloud account, no Team resources. Skip the whole
+    // reconcile pass so the background poll stops spawning the vela listing
+    // and logging "authoritative Team resource listing is unavailable" for an
+    // account this build does not use.
+    if (personalModeEnabled(await readAppConfig(RUNTIME_DATA_DIR))) return;
     // Background events carry only a Workspace id, not an HTTP request. Resolve
     // that exact membership from the directory at execution time rather than
     // relying on whichever resource request happened to run first in this
@@ -9314,7 +9328,9 @@ export async function startServer({
       }
     });
   });
-  registerSocialShareRoutes(app, { http: httpDeps });
+  if (cloudPlaneMounted) {
+    registerSocialShareRoutes(app, { http: httpDeps });
+  }
   const projectCreatePreparationTimeoutMs = projectCreatePreparationTimeoutMsFromEnv();
   const stopProjectPublicFiles = createProjectPublicFileStop(
     publicFilePublicationStore,

@@ -18,6 +18,7 @@ import type {
 // Presence identity is the shared contract DTO; re-export so collab consumers
 // keep importing it from the client module.
 import { coalescedGet, evictCoalescedGet } from '../lib/coalesced-get';
+import { isPersonalModeEnabled } from '../lib/personal-mode';
 import { randomUUID } from '../utils/uuid';
 import { parseOwnedProjectContentUpdate } from '@open-design/contracts';
 import {
@@ -805,6 +806,10 @@ export class CollabClient {
   }
 
   private async get(path: string): Promise<Record<string, unknown> | null> {
+    // Personal mode never talks to the collaboration plane: the daemon has no
+    // cloud session to authorize it against, so the poll reports "nothing known"
+    // instead of 400ing every few seconds.
+    if (isPersonalModeEnabled()) return null;
     const response = await this.fetchImpl(this.url(path), {
       ...(this.workspaceContext
         ? { headers: workspaceProjectHeaders(this.workspaceContext) }
@@ -866,6 +871,9 @@ export function fetchProjectCollabStatus(
     workspaceContext?: WorkspaceCollabContext;
   },
 ): Promise<Record<string, unknown> | null> {
+  // Personal mode: the collaboration plane does not exist on this daemon, so
+  // there is nothing to ask. Report "unknown" without a request.
+  if (isPersonalModeEnabled()) return Promise.resolve(null);
   const baseUrl = options?.baseUrl ?? '';
   const fetchImpl = options?.fetchImpl ?? globalThis.fetch.bind(globalThis);
   const identity = workspaceIdentityCacheKey(options?.workspaceContext);

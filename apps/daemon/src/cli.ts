@@ -262,7 +262,7 @@ const PROJECT_STRING_FLAGS = new Set([
   'client-request-id',
   'agent', 'model', 'service-tier', 'snapshot-id', 'inputs', 'grant-caps', 'editor',
   'title', 'label', 'against', 'seed-from', 'fork-after', 'mode',
-  'source', 'out',
+  'source', 'out', 'folder', 'location',
 ]);
 const PROJECT_RESOURCE_STRING_FLAGS = new Set([
   ...PROJECT_STRING_FLAGS,
@@ -7686,7 +7686,11 @@ async function runProject(args) {
   od project create [--name "<title>"] [--skill <id>] [--design-system <id>]
                     [--plugin <id>] [--inputs <json>] [--metadata-json <path|->]
                     [--mode design|chat|plan] [--task-type motion-design]
+                    [--location <projectLocationId>] [--folder <folderName>]
                     [--prompt-file <path|->] [--json]
+                    --location picks the project location (see
+                    'od project locations'); --folder names the folder inside
+                    it. Without --folder the folder is named after the title.
   od project create-design-system <id> [--name "<title>"]
                     [--prompt "<text>" | --prompt-file <path|->] [--json]
                     Duplicate a project as a design-system workspace and seed
@@ -7696,6 +7700,8 @@ async function runProject(args) {
   od project import <baseDir> [--name "<title>"]
   od project import-folder <path> [--name "<title>"] [--skill <id>]
                     [--design-system <id>] [--json]
+  od project locations [--json]           List configured project locations
+                                          (id / builtin|default / path).
   od project list                         List projects.
   od project info <id>                    Print one project.
   od project restore-automatic-scenario <id> [--json]
@@ -7752,6 +7758,31 @@ Common options:
   const explicitWorkspaceHeaders = workspaceHeadersFromExplicitFlags(flags);
   const workspaceHeaders = explicitWorkspaceHeaders ?? {};
   switch (sub) {
+    case 'locations': {
+      // Personal-mode project folders: the Web picks a location in Settings —
+      // the CLI had no way to see or verify that choice, which made
+      // `--location`/`--folder` unusable for an embedding agent. `--json` is
+      // the machine-readable form.
+      const locationsResp = await fetch(`${base}/api/project-locations`);
+      if (!locationsResp.ok) return structuredHttpFailure(locationsResp);
+      const locationsBody = await locationsResp.json().catch(() => ({}));
+      const locations = Array.isArray(locationsBody?.locations) ? locationsBody.locations : [];
+      const configResp = await fetch(`${base}/api/app-config`);
+      const configBody = configResp.ok ? await configResp.json().catch(() => ({})) : {};
+      const defaultId = typeof configBody?.config?.defaultProjectLocationId === 'string'
+        ? configBody.config.defaultProjectLocationId
+        : null;
+      if (flags.json) {
+        return process.stdout.write(
+          JSON.stringify({ defaultProjectLocationId: defaultId, locations }, null, 2) + '\n',
+        );
+      }
+      for (const location of locations) {
+        const marker = location?.builtIn ? 'builtin' : location?.id === defaultId ? 'default' : '-';
+        console.log(`${location?.id ?? '-'}\t${marker}\t${location?.path ?? '-'}`);
+      }
+      return;
+    }
     case 'list': {
       // After 0.18.0's workspace isolation, GET /api/projects is the NO-SCOPE
       // catalog: it only returns projects that were never adopted into a
@@ -7885,6 +7916,16 @@ Common options:
         skillId:        flags.skill ?? null,
         designSystemId: flags['design-system'] ?? null,
       };
+      // Folder control (personal mode): `--location <id>` picks the project
+      // location, `--folder <name>` names the folder inside it. Both are one
+      // field each on the same create request the Web sends; the daemon
+      // resolves the location default and rejects an unusable folder name.
+      if (typeof flags.location === 'string' && flags.location.trim()) {
+        body.projectLocationId = flags.location.trim();
+      }
+      if (typeof flags.folder === 'string' && flags.folder.trim()) {
+        body.folderName = flags.folder.trim();
+      }
       const conversationMode = normalizeChatSessionModeFlag(flags.mode);
       if (conversationMode) body.conversationMode = conversationMode;
       if (flags['pending-prompt']) body.pendingPrompt = flags['pending-prompt'];

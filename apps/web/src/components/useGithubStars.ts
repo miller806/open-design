@@ -1,3 +1,4 @@
+import { isPersonalModeEnabled } from '../lib/personal-mode';
 // Shared GitHub star-count hook backing the topbar pill
 // (`GithubStarBadge`). The browser talks only to the local daemon,
 // which caches GitHub metadata and can return stale-on-error values
@@ -106,6 +107,11 @@ export function useGithubStars(): number | null {
   });
 
   useEffect(() => {
+    // No community/marketing request from a single-machine install.
+    if (isPersonalModeEnabled()) {
+      setCount(null);
+      return;
+    }
     const now = Date.now();
     const cached = memoryCache ?? readPersistedCache();
     if (cached && now - cached.ts < CACHE_TTL_MS) {

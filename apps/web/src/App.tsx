@@ -71,6 +71,7 @@ import {
   type ProjectRenameFenceToken,
   type ProjectNameAuthorityResolution,
 } from './components/ProjectView';
+import { ProjectsRail } from './components/ProjectsRail';
 import type { ObservedPublicShareLink, ObservedShareUpdateRequest } from './components/share/observed-public-share-link';
 import type { ShareLoginReturn } from './components/share/share-login-return';
 import { SignedOutObservedShare } from './components/share/SignedOutObservedShare';
@@ -156,6 +157,7 @@ import {
   workspaceBillingSummaryForContext,
   workspaceIdentityCacheKey,
   workspaceResourceReadContext,
+  type WorkspaceContextState,
 } from './collab/useWorkspaceContext';
 import {
   projectResourceReadsCanStart,
@@ -246,6 +248,7 @@ import {
   releaseProjectRunStatusReads,
 } from './hooks/useProjectRunStatuses';
 import { resumeThumbnailLoads, suspendThumbnailLoads } from './lib/thumbnail-load-gate';
+import { PersonalModeProvider, setPersonalModeFlag } from './lib/personal-mode';
 import type {
   PluginShareAction,
   PluginShareProjectOutcome,
@@ -999,7 +1002,33 @@ function AppInner() {
   const clientType = useMemo(() => detectClientType(), []);
   const hostPlatform = useMemo(() => getOpenDesignHost()?.client.platform, []);
   useModalWindowDragGuard();
-  const workspaceContextState = useWorkspaceContext();
+  // Personal mode is resolved BEFORE any workspace-consuming hook below. The
+  // provider at the end of this component reaches every CHILD component, but
+  // App's own body renders outside it — so without this early read, App itself
+  // would still resolve a cloud Workspace and list projects through the
+  // workspace catalog, which is exactly what personal mode removes.
+  const [config, setConfig] = useState<AppConfig>(() => loadConfig());
+  // Explicit ON, not "not false": every production config carries the key (it is
+  // in DEFAULT_CONFIG and merged back from the daemon), while hand-built config
+  // fixtures — test doubles, older integrations — describe the cloud shell. Reading
+  // `=== true` keeps that boundary honest instead of flipping those callers into a
+  // no-cloud mode they never asked for.
+  const personalMode = config.personalMode === true;
+  // Non-React cloud call sites (collab clients, directory cache) read this module
+  // flag; set it before anything downstream renders or runs an effect.
+  setPersonalModeFlag(personalMode);
+  const rawWorkspaceContextState = useWorkspaceContext();
+  // Personal mode answers with the local/signed-out shape: one local project
+  // catalog, no workspace-scoped billing/member reads.
+  const workspaceContextState: WorkspaceContextState = personalMode
+    ? {
+        context: null,
+        resourceReadIdentity: null,
+        loading: false,
+        identityChangePending: false,
+        accountGeneration: rawWorkspaceContextState.accountGeneration,
+      }
+    : rawWorkspaceContextState;
   const {
     context: workspaceContext,
     loading: workspaceContextLoading,
@@ -1086,7 +1115,6 @@ function AppInner() {
       root.classList.remove('is-window-blurred');
     };
   }, [clientType, hostPlatform]);
-  const [config, setConfig] = useState<AppConfig>(() => loadConfig());
   const configRef = useRef(config);
   configRef.current = config;
   const latestPersistedConfigRef = useRef(config);
@@ -2268,6 +2296,25 @@ function AppInner() {
   }, [activeProjectId, activeFileName]);
 
   useEffect(() => {
+    // The cloud runtime is retired in this build: no model catalog to poll.
+    amrModelsRef.current = null;
+  }, [amrCatalogIdentity]);
+
+  // App-level AMR sign-in state. Feeds two analytics globals: the
+  // `amr` configure_type bucket (deriveConfigureGlobals below) and the
+  // `user_id` public param (the AMR account id is the only join key
+  // between this PostHog project and the AMR-side one). Child surfaces
+  // push status changes up via onAmrLoginStatusChange; the global
+  // AMR_LOGIN_STATUS_EVENT covers logins finishing in surfaces that
+  // unmounted before their poll settled.
+  useEffect(() => {
+    // The cloud account plane is retired: the shell reads as signed out and
+    // never asks the daemon for a login status.
+    amrLoginStatusRef.current = null;
+    setAmrLoginStatus(null);
+  }, []);
+
+  useEffect(() => {
     analytics.setUserId(
       isAmrSessionAuthenticated(amrLoginStatus) ? amrLoginStatus?.user?.id ?? null : null,
     );
@@ -2630,11 +2677,16 @@ function AppInner() {
   useEffect(() => {
     if (!daemonConfigLoaded || agentsLoading) return;
     if (config.onboardingCompleted !== true) return;
-    if (config.agentId) return;
-    const firstAvailable = agents.find((a) => a.available);
+    // Personal mode never executes through the cloud agent, so a saved `amr`
+    // selection counts as an EMPTY slot: without this the composer keeps showing
+    // (and runs) the cloud agent the picker no longer offers.
+    const savedAgentId = personalMode && config.agentId === 'amr' ? null : config.agentId;
+    if (savedAgentId) return;
+    const firstAvailable = agents.find((a) => a.available && !(personalMode && a.id === 'amr'));
     if (!firstAvailable) return;
     setConfig((prev) => {
-      if (prev.agentId) return prev;
+      const currentId = personalMode && prev.agentId === 'amr' ? null : prev.agentId;
+      if (currentId) return prev;
       const next: AppConfig = { ...prev, agentId: firstAvailable.id };
       saveConfig(next);
       void syncConfigToDaemon(next);
@@ -2646,6 +2698,7 @@ function AppInner() {
     agents,
     config.agentId,
     config.onboardingCompleted,
+    personalMode,
   ]);
 
   // Auto-pick the default design system the same way — only after daemon
@@ -4445,7 +4498,10 @@ function AppInner() {
     navigate({ kind: 'project', projectId, fileName: liveArtifactTabId(artifactId) });
   }, []);
 
-  const handleDeleteProject = useCallback(async (id: string) => {
+  const handleDeleteProject = useCallback(async (
+    id: string,
+    options?: { nextProjectId?: string | null },
+  ) => {
     // Carry the active workspace identity so the daemon's cross-workspace
     // ownership check actually runs — see deleteProject's docblock
     // (recvq5ecTkar91: a leaked-in project was really deletable, not just
@@ -4465,10 +4521,21 @@ function AppInner() {
     iframeKeepAlivePool.evictProject(id, { includeActive: true });
     setProjects((curr) => curr.filter((p) => p.id !== id));
     if (route.kind === 'project' && route.projectId === id) {
-      navigate({ kind: 'home', view: 'home' });
+      // Deleting the project you are LOOKING AT must not dump you on Home: the
+      // workbench (and with it the project rail) is where deleting happens, and
+      // being sent Home is what made "delete another one" impossible without
+      // navigating back in. Open the neighbour the caller named — the row that
+      // takes the deleted row's place — and only fall back to Home when nothing
+      // is left.
+      const nextProjectId = options?.nextProjectId?.trim();
+      if (nextProjectId && nextProjectId !== id) {
+        await handleOpenProject(nextProjectId);
+      } else {
+        navigate({ kind: 'home', view: 'home' });
+      }
     }
     return true;
-  }, [clearLocalProject, iframeKeepAlivePool, route, deletedShares.capture]);
+  }, [clearLocalProject, deletedShares.capture, handleOpenProject, iframeKeepAlivePool, route]);
 
   const handleRenameProject = useCallback(async (id: string, name: string) => {
     const trimmed = name.trim();
@@ -6086,6 +6153,7 @@ function AppInner() {
     );
   }
   return (
+    <PersonalModeProvider enabled={config.personalMode === true}>
     <ReferralEntryProvider accountId={isAmrSessionAuthenticated(amrLoginStatus) ? amrLoginStatus?.user?.id ?? amrLoginStatus?.credentialRevision ?? null : null} profile={amrLoginStatus?.profile ?? null}>
       <div
         className={`workspace-shell workspace-shell--${clientType}`}
@@ -6159,7 +6227,36 @@ function AppInner() {
           && projectRouteWorkspaceContext.failure === 'unavailable' ? (
           <ProjectWorkspaceRecoveryTip />
         ) : null}
-        <div className="workspace-shell__body">
+        <div className={`workspace-shell__body${route.kind === 'project' ? ' workspace-shell__body--with-projects-rail' : ''}`}>
+          {/* The project workbench keeps a persistent project rail. Without it, the
+              entry rail vanishes on open and switching projects needs a trip back
+              to Home. Rendered here (not inside ProjectView) because the rail is
+              shell furniture: it must not re-mount when the open project
+              changes. */}
+          {route.kind === 'project' && activeProject ? (
+            <ProjectsRail
+              projects={projects}
+              activeProjectId={activeProject.id}
+              onOpenProject={(id) => { void handleOpenProject(id); }}
+              onBrowseProjects={() => navigate({ kind: 'home', view: 'projects' })}
+              // 新建项目 creates a blank project and lands IN it — the entry
+              // rail's behaviour, which this rail mirrors. Bouncing to Home was
+              // the wrong shape here: from the workbench the user wants another
+              // project open, not their current one closed behind a composer.
+              onNewProject={() => {
+                void handleCreateProject({
+                  name: t('common.untitled'),
+                  skillId: null,
+                  designSystemId: null,
+                  // Same `generated` tag every other blank create uses, so an
+                  // agent-produced title can still rename the project later.
+                  metadata: { kind: 'other', nameSource: 'generated' },
+                });
+              }}
+              onOpenSettings={() => openSettings()}
+              onDeleteProject={handleDeleteProject}
+            />
+          ) : null}
           {appMain}
         </div>
       </div>
@@ -6280,5 +6377,6 @@ function AppInner() {
         />
       ) : null}
     </ReferralEntryProvider>
+    </PersonalModeProvider>
   );
 }

@@ -471,6 +471,15 @@ export interface AppConfig {
   customInstructions?: string;
   projectLocations?: ProjectLocationPrefs[];
   defaultProjectLocationId?: string | null;
+  /**
+   * Personal (single-machine, no-cloud) mode. When on, the shell hides every
+   * cloud account surface — AMR sign-in, invites, team members, the Workspace
+   * switcher and billing — and the daemon treats cloud routes as unavailable.
+   * Local agent CLIs and BYOK stay the execution path; every project folder
+   * lives on this machine. Defaults to ON for this personal build; set
+   * `OD_PERSONAL_MODE=0` (env) to restore the cloud-capable shell.
+   */
+  personalMode?: boolean;
 }
 
 export interface TelemetryConfig {

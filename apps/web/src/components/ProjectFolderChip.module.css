@@ -1,0 +1,62 @@
+/* Project folder chip in the conversation dock: which directory the agent is
+   working in, with the full path in the tooltip and a click-to-copy. `order: 1`
+   seats it right after the project dropdown and before the history control
+   (also order 1, later in DOM) — the chip describes the PROJECT, so it belongs
+   beside the project name rather than among the pane controls. */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  order: 1;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 220px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--material-separator, rgba(0, 0, 0, 0.08));
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-soft, #848484);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.chip:hover {
+  background: color-mix(in srgb, var(--bg-panel, #fff) 78%, transparent);
+  color: var(--text-strong, #202020);
+}
+
+.chip:focus-visible {
+  outline: 1px solid rgb(26, 116, 255);
+  outline-offset: 2px;
+}
+
+.chip svg {
+  flex: none;
+  opacity: 0.85;
+}
+
+.name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Copy acknowledgement: the same chip, briefly green, so the click has a
+   visible result without a toast in a chrome row that has no toast seat. */
+.copied,
+.copied:hover {
+  border-color: color-mix(in srgb, rgb(2, 113, 6) 35%, transparent);
+  color: rgb(2, 113, 6);
+}
+
+@media (max-width: 760px) {
+  .chip {
+    max-width: 140px;
+  }
+}

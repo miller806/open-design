@@ -1,0 +1,260 @@
+/* Persistent project rail for the project workbench. Quiet by design: it sits
+   beside the chat panel and the Design Files surface, so it carries only the
+   project list and the ways out of it. Widths are the two states the component
+   renders; the shell owns the column itself (see styles/shell.css). */
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  width: 208px;
+  min-width: 0;
+  height: 100%;
+  padding: 8px 8px 10px;
+  box-sizing: border-box;
+  gap: 6px;
+  border-right: 1px solid var(--material-separator, rgba(0, 0, 0, 0.08));
+  background: color-mix(in srgb, var(--bg-elevated, #fff) 70%, transparent);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  user-select: none;
+  overflow: hidden;
+}
+
+.railCollapsed {
+  width: 56px;
+  padding-inline: 6px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  min-height: 28px;
+  padding: 0 2px 0 6px;
+}
+
+.title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-soft, #848484);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.railCollapsed .header {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-soft, #848484);
+  cursor: pointer;
+}
+
+.iconButton:hover {
+  background: var(--bg-fill-tertiary, rgba(0, 0, 0, 0.04));
+  color: var(--text-strong, #202020);
+}
+
+.iconButton:focus-visible {
+  outline: 1px solid rgb(26, 116, 255);
+  outline-offset: 2px;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  min-height: 30px;
+  padding: 1px 2px 1px 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text, #494949);
+}
+
+.row:hover {
+  background: var(--bg-fill-tertiary, rgba(0, 0, 0, 0.04));
+}
+
+/* The row is a container, not a button: switching and deleting are two separate
+   controls (a button cannot nest a button). */
+.rowMain {
+  display: flex;
+  /* The global button base centres its content; a rail row must start at the
+     left edge so every project name lines up on one column. */
+  justify-content: flex-start;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 28px;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rowMain:focus-visible,
+.rowDelete:focus-visible {
+  outline: 1px solid rgb(26, 116, 255);
+  outline-offset: 1px;
+}
+
+/* Delete stays out of the way until the row is hovered or focused, so the rail
+   reads as a list of projects rather than a list of controls. */
+.rowDelete {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-soft, #848484);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 140ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.row:hover .rowDelete,
+.row:focus-within .rowDelete {
+  opacity: 1;
+}
+
+.rowDelete:hover {
+  background: color-mix(in srgb, rgb(207, 34, 46) 12%, transparent);
+  color: rgb(207, 34, 46);
+}
+
+/* Touch has no hover: keep the delete control reachable. */
+@media (hover: none) {
+  .rowDelete { opacity: 1; }
+}
+
+/* The active project is where the workbench already is; the tint says "you are
+   here" without competing with the tab that is actually open. */
+.rowActive,
+.rowActive:hover {
+  background: color-mix(in srgb, var(--text-strong, #202020) 8%, transparent);
+  color: var(--text-strong, #202020);
+  font-weight: 500;
+}
+
+.railCollapsed .rowMain {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--bg-fill-secondary, rgba(0, 0, 0, 0.06));
+  color: var(--text-strong, #202020);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.empty {
+  margin: 6px;
+  color: var(--text-soft, #848484);
+  font-size: 12px;
+}
+
+.footer {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: none;
+  padding-top: 6px;
+  border-top: 1px solid var(--material-separator, rgba(0, 0, 0, 0.08));
+}
+
+.action {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 28px;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-soft, #848484);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.action:hover {
+  background: var(--bg-fill-tertiary, rgba(0, 0, 0, 0.04));
+  color: var(--text-strong, #202020);
+}
+
+.action:focus-visible {
+  outline: 1px solid rgb(26, 116, 255);
+  outline-offset: 1px;
+}
+
+.railCollapsed .action {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

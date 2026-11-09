@@ -67,6 +67,21 @@ export interface AppConfigPrefs {
   /** Project location id used for new projects when the create request does not choose one explicitly. */
   defaultProjectLocationId?: string | null;
   /**
+   * Personal (single-machine, no-cloud) mode.
+   *
+   * When on, this installation runs without the cloud account system: the web
+   * shell hides every AMR Cloud account surface (sign-in card, invites, team
+   * members, Workspace switcher, billing/credits) and the daemon treats cloud
+   * routes as unavailable instead of prompting for an account. Local agent
+   * CLIs and BYOK providers remain the execution path, and every project lives
+   * on the local filesystem.
+   *
+   * Absent/`false` keeps the upstream cloud-capable behaviour. The packaged
+   * personal build pins this with `OD_PERSONAL_MODE=1`, which outranks the
+   * saved value.
+   */
+  personalMode?: boolean;
+  /**
    * Which mode this installation runs the OD Next design strategy in.
    *
    * OD Next is the default route: an installation that never chose runs the

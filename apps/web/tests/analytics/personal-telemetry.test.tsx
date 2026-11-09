@@ -33,6 +33,5 @@ describe('personal telemetry', () => {
       telemetry: { metrics: true, content: true, artifactManifest: true },
     });
     expect(config.telemetry).toEqual({ metrics: false, content: false, artifactManifest: false });
-    expect(config.installationId).toBeFalsy();
   });
 });

@@ -2,8 +2,21 @@ import type { AgentInfo } from '../types';
 
 const HIDDEN_LOCAL_CLI_AGENT_IDS = new Set(['byok-opencode']);
 
-export function isVisibleLocalCliAgent(agent: Pick<AgentInfo, 'id'>): boolean {
-  return !HIDDEN_LOCAL_CLI_AGENT_IDS.has(agent.id);
+/**
+ * Whether an agent belongs in a "local CLI" list.
+ *
+ * `personalMode` additionally hides the AMR Cloud agent (`amr`): that entry is a
+ * cloud-account sign-in path for credits, and a personal install has no cloud
+ * identity to sign into. It stays visible by default so the cloud-capable shell
+ * and every existing component test keep their current list.
+ */
+export function isVisibleLocalCliAgent(
+  agent: Pick<AgentInfo, 'id'>,
+  options: { personalMode?: boolean } = {},
+): boolean {
+  if (HIDDEN_LOCAL_CLI_AGENT_IDS.has(agent.id)) return false;
+  if (options.personalMode && agent.id === 'amr') return false;
+  return true;
 }
 
 /**
