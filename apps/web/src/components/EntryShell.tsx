@@ -379,9 +379,7 @@ type EntryCreateProjectInput = Omit<CreateInput, 'metadata'> & {
   userWorkingDirToken?: string;
   linkedDirs?: string[] | null;
   onboardingEntry?: OnboardingEntry;
-};
-
-/**
+};/**
  * What App hands back once a Home send has entered the project frame
  * optimistically: the client-minted project id the create must reuse, and the
  * way to undo the hand-off (drop the optimistic row, return to Home with the

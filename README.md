@@ -31,61 +31,6 @@ OpenDesign is **the 1st collaborative AI design agent workspace**. Start with a 
 
 That workflow is open and extensible. OpenDesign is licensed under Apache 2.0 and gives teams skills, design templates, design systems, and plugins they can inspect and adapt to their own process.
 
-
----
-
-## Product tour
-
-### Core pages
-
-<table>
-<tr>
-<td width="50%" valign="top">
-<a href="docs/screenshots/product-tour/home-workspace-2026-09-30-220844.png"><img src="docs/screenshots/product-tour/home-workspace-2026-09-30-220844.png" alt="OpenDesign Home page with the prototype composer and example prompts" width="500" /></a><br/>
-<sub><b>Home</b> — start with a brief or an example.</sub>
-</td>
-<td width="50%" valign="top">
-<a href="docs/screenshots/product-tour/all-projects-2026-09-30-220900.webp"><img src="docs/screenshots/product-tour/all-projects-2026-09-30-220900.webp" alt="OpenDesign All projects page showing recent design systems, media, and prototypes" width="500" /></a><br/>
-<sub><b>All projects</b> — revisit design systems, media, and prototypes.</sub>
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-<a href="docs/screenshots/product-tour/design-systems-stripe-2026-09-30-220910.png"><img src="docs/screenshots/product-tour/design-systems-stripe-2026-09-30-220910.png" alt="OpenDesign Design systems page showing the Stripe brand identity, logo, and typography" width="500" /></a><br/>
-<sub><b>Design Systems</b> — inspect brand assets and refine them with an agent.</sub>
-</td>
-<td width="50%" valign="top">
-<a href="docs/screenshots/product-tour/plugins-skills-2026-09-30-220917.png"><img src="docs/screenshots/product-tour/plugins-skills-2026-09-30-220917.png" alt="OpenDesign Plugins page showing official skills, categories, and search" width="500" /></a><br/>
-<sub><b>Plugins</b> — find skills and launch them with <code>Try it</code>.</sub>
-</td>
-</tr>
-</table>
-
-### Studio — create and refine in one project
-
-<table>
-<tr>
-<td width="50%" valign="top">
-<img src="docs/screenshots/product-tour/studio-prototype-2026.webp" alt="Website prototype with live preview and agent conversation in OpenDesign Studio" /><br/>
-<sub><b>Prototype</b> — build and refine interactive web experiences with your agent and live preview.</sub>
-</td>
-<td width="50%" valign="top">
-<img src="docs/screenshots/product-tour/studio-slides-2026.png" alt="Swiss Grid presentation in OpenDesign Studio with slide thumbnails and speaker notes" /><br/>
-<sub><b>Slides</b> — create decks, review slides and speaker notes, and export when ready.</sub>
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-<img src="docs/screenshots/product-tour/studio-image-2026.webp" alt="Generated fashion portrait preview in OpenDesign Studio" /><br/>
-<sub><b>Image</b> — generate visual assets from the conversation, inspect the result, then download or open it.</sub>
-</td>
-<td width="50%" valign="top">
-<a href="docs/screenshots/product-tour/studio-hyperframes-2026.mp4"><img src="docs/screenshots/product-tour/studio-hyperframes-poster-2026.png" alt="OpenDesign HyperFrames editor showing the One brief, Every deliverable motion graphic" /></a><br/>
-<sub><b>HyperFrames</b> — create motion graphics with your agent and export to MP4. <a href="docs/screenshots/product-tour/studio-hyperframes-2026.mp4">Watch the video</a>.</sub>
-</td>
-</tr>
-</table>
-
 ---
 
 ## Platform Compatibility
@@ -139,11 +84,9 @@ The default output surface. Single-page HTML artifacts that read your `DESIGN.md
 <table>
 <tr>
 <td width="50%" valign="top">
-<img src="docs/screenshots/skills/dating-web.png" alt="Web prototype dating-web" /><br/>
 <sub><b>Web prototype</b> — an editorial dashboard with scrollbars, KPIs, and charts. Rendered straight from <code>design-templates/dating-web/</code>.</sub>
 </td>
 <td width="50%" valign="top">
-<img src="docs/screenshots/skills/gamified-app.png" alt="Gamified app" /><br/>
 <sub><b>Mobile app prototype</b> — a three-screen gamified flow with XP ribbons and quest detail. Hand off straight to Cursor / Codex / Claude Code to turn into React/Next/Vue.</sub>
 </td>
 </tr>
@@ -156,21 +99,17 @@ Live dashboards, decision rooms, KPI walls — single-page artifacts that pull d
 <table>
 <tr>
 <td width="50%" valign="top">
-<img src="docs/screenshots/skills/live-dashboard.png" alt="Live dashboard" /><br/>
 <sub><b>Live dashboard</b> — an editable KPI wall whose tweaks panel surfaces the parameters worth nudging. The agent emits a manifest, and the iframe re-renders without a reload.</sub>
 </td>
 <td width="50%" valign="top">
-<img src="docs/screenshots/skills/research-decision-room.png" alt="Decision room" /><br/>
 <sub><b>Decision room</b> — a multi-source briefing artifact for product / research / ops meetings.</sub>
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
-<img src="docs/screenshots/skills/github-dashboard.png" alt="GitHub dashboard" /><br/>
 <sub><b>GitHub-style dashboard</b> — repo metrics presented as a live artifact.</sub>
 </td>
 <td width="50%" valign="top">
-<img src="docs/screenshots/skills/flowai-live-dashboard-template.png" alt="Flow live dashboard" /><br/>
 <sub><b>Flow live-dashboard template</b> — a domain-specific KPI template, branded through the active <code>DESIGN.md</code>.</sub>
 </td>
 </tr>
@@ -181,11 +120,9 @@ Live dashboards, decision rooms, KPI walls — single-page artifacts that pull d
 <table>
 <tr>
 <td width="50%" valign="top">
-<img src="docs/screenshots/07-magazine-deck.png" alt="Magazine deck (guizang-ppt)" /><br/>
 <sub><b>Deck mode (guizang-ppt)</b> — magazine layouts, WebGL hero, P0/P1/P2 checklists. Bundled verbatim from <a href="https://github.com/op7418/guizang-ppt-skill"><code>op7418/guizang-ppt-skill</code></a> with its original license preserved.</sub>
 </td>
 <td width="50%" valign="top">
-<img src="docs/screenshots/skills/deck-swiss-international.png" alt="Swiss deck" /><br/>
 <sub><b>Swiss International-style deck</b> — grid-anchored, monochrome accents. One of <b>15 deck templates</b> and <b>36 themes</b> under <code>design-templates/html-ppt-*/</code>.</sub>
 </td>
 </tr>

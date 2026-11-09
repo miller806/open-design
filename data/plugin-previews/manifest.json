@@ -337,13 +337,6 @@
       "holdMs": 1267,
       "hash": "7b884ba518d75c52"
     },
-    "example-open-design-landing": {
-      "video": "example-open-design-landing/8a69e5e7664328c7/preview.mp4",
-      "poster": "example-open-design-landing/8a69e5e7664328c7/poster.jpg",
-      "durationMs": 10067,
-      "holdMs": 2500,
-      "hash": "8a69e5e7664328c7"
-    },
     "example-orbit-general": {
       "video": "example-orbit-general/65935e27858c8c48/preview.mp4",
       "poster": "example-orbit-general/65935e27858c8c48/poster.jpg",
@@ -728,13 +721,6 @@
       "durationMs": 9600,
       "holdMs": 2500,
       "hash": "5e3285e96269ab5a"
-    },
-    "example-open-design-landing-deck": {
-      "video": "example-open-design-landing-deck/bb6b89eff13bdb81/preview.mp4",
-      "poster": "example-open-design-landing-deck/bb6b89eff13bdb81/poster.jpg",
-      "durationMs": 9400,
-      "holdMs": 2500,
-      "hash": "bb6b89eff13bdb81"
     },
     "example-weekly-update": {
       "video": "example-weekly-update/e0e9d441519ce3e8/preview.mp4",
@@ -1204,13 +1190,6 @@
       "durationMs": 1267,
       "holdMs": 1267,
       "hash": "131b8b88d87a0138"
-    },
-    "example-open-design-homepage": {
-      "video": "example-open-design-homepage/6b40c0a4f2b15872/preview.mp4",
-      "poster": "example-open-design-homepage/6b40c0a4f2b15872/poster.jpg",
-      "durationMs": 1267,
-      "holdMs": 1267,
-      "hash": "6b40c0a4f2b15872"
     },
     "example-web-clone": {
       "video": "example-web-clone/d92cf04f7619478c/preview.mp4",

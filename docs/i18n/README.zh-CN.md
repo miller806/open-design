@@ -31,7 +31,6 @@ OpenDesign 是**首个协作式 AI 设计 Agent 工作台**。从需求描述出
 
 这套工作流开放且可扩展。OpenDesign 采用 Apache 2.0 许可证；团队可以查看并按自己的流程调整技能、设计模板、设计系统和插件。
 
-
 ---
 
 ## 产品速览
@@ -41,21 +40,17 @@ OpenDesign 是**首个协作式 AI 设计 Agent 工作台**。从需求描述出
 <table>
 <tr>
 <td width="50%" valign="top">
-<a href="../../docs/screenshots/product-tour/home-workspace-2026-09-30-220844.png"><img src="../../docs/screenshots/product-tour/home-workspace-2026-09-30-220844.png" alt="Home — 从需求描述或示例开始。" width="500" /></a><br/>
 <sub><b>Home</b> — 从需求描述或示例开始。</sub>
 </td>
 <td width="50%" valign="top">
-<a href="../../docs/screenshots/product-tour/all-projects-2026-09-30-220900.webp"><img src="../../docs/screenshots/product-tour/all-projects-2026-09-30-220900.webp" alt="All projects — 重新打开设计系统、媒体和原型项目。" width="500" /></a><br/>
 <sub><b>All projects</b> — 重新打开设计系统、媒体和原型项目。</sub>
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
-<a href="../../docs/screenshots/product-tour/design-systems-stripe-2026-09-30-220910.png"><img src="../../docs/screenshots/product-tour/design-systems-stripe-2026-09-30-220910.png" alt="Design Systems — 查看品牌素材，并与 Agent 一起完善。" width="500" /></a><br/>
 <sub><b>Design Systems</b> — 查看品牌素材，并与 Agent 一起完善。</sub>
 </td>
 <td width="50%" valign="top">
-<a href="../../docs/screenshots/product-tour/plugins-skills-2026-09-30-220917.png"><img src="../../docs/screenshots/product-tour/plugins-skills-2026-09-30-220917.png" alt="Plugins — 查找技能，通过 Try it 启动。" width="500" /></a><br/>
 <sub><b>Plugins</b> — 查找技能，通过 Try it 启动。</sub>
 </td>
 </tr>
@@ -66,22 +61,17 @@ OpenDesign 是**首个协作式 AI 设计 Agent 工作台**。从需求描述出
 <table>
 <tr>
 <td width="50%" valign="top">
-<img src="../../docs/screenshots/product-tour/studio-prototype-2026.webp" alt="Prototype — 与 Agent 一起构建和迭代交互式网页，并实时预览。" /><br/>
 <sub><b>Prototype</b> — 与 Agent 一起构建和迭代交互式网页，并实时预览。</sub>
 </td>
 <td width="50%" valign="top">
-<img src="../../docs/screenshots/product-tour/studio-slides-2026.png" alt="Slides — 制作演示文稿、查看幻灯片和演讲者备注，完成后导出。" /><br/>
 <sub><b>Slides</b> — 制作演示文稿、查看幻灯片和演讲者备注，完成后导出。</sub>
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
-<img src="../../docs/screenshots/product-tour/studio-image-2026.webp" alt="Image — 从对话中生成视觉素材，查看结果，再下载或打开。" /><br/>
 <sub><b>Image</b> — 从对话中生成视觉素材，查看结果，再下载或打开。</sub>
 </td>
 <td width="50%" valign="top">
-<a href="../../docs/screenshots/product-tour/studio-hyperframes-2026.mp4"><img src="../../docs/screenshots/product-tour/studio-hyperframes-poster-2026.png" alt="HyperFrames — 与 Agent 一起制作动态图形并导出 MP4。" /></a><br/>
-<sub><b>HyperFrames</b> — 与 Agent 一起制作动态图形并导出 MP4。 <a href="../../docs/screenshots/product-tour/studio-hyperframes-2026.mp4">观看视频</a>.</sub>
 </td>
 </tr>
 </table>
@@ -139,11 +129,9 @@ OpenDesign 是**首个协作式 AI 设计 Agent 工作台**。从需求描述出
 <table>
 <tr>
 <td width="50%" valign="top">
-<img src="../../docs/screenshots/skills/dating-web.png" alt="Web 原型 dating-web" /><br/>
 <sub><b>Web 原型</b>——带滚动条、KPI、图表的编辑类仪表盘。直接从 <code>design-templates/dating-web/</code> 渲染。</sub>
 </td>
 <td width="50%" valign="top">
-<img src="../../docs/screenshots/skills/gamified-app.png" alt="游戏化应用" /><br/>
 <sub><b>移动端应用原型</b>——三屏游戏化流程，含 XP 绶带和任务详情。可直接交付给 Cursor / Codex / Claude Code 转为 React/Next/Vue。</sub>
 </td>
 </tr>
@@ -156,21 +144,17 @@ OpenDesign 是**首个协作式 AI 设计 Agent 工作台**。从需求描述出
 <table>
 <tr>
 <td width="50%" valign="top">
-<img src="../../docs/screenshots/skills/live-dashboard.png" alt="实时仪表盘" /><br/>
 <sub><b>实时仪表盘</b>——可编辑的 KPI 大屏，调参面板暴露值得调整的参数。Agent 输出一份 manifest，iframe 无需刷新即可重新渲染。</sub>
 </td>
 <td width="50%" valign="top">
-<img src="../../docs/screenshots/skills/research-decision-room.png" alt="决策室" /><br/>
 <sub><b>决策室</b>——面向产品 / 研究 / 运营会议的多源简报工件。</sub>
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
-<img src="../../docs/screenshots/skills/github-dashboard.png" alt="GitHub 仪表盘" /><br/>
 <sub><b>GitHub 风格仪表盘</b>——以实时工件形式展示仓库指标。</sub>
 </td>
 <td width="50%" valign="top">
-<img src="../../docs/screenshots/skills/flowai-live-dashboard-template.png" alt="Flow 实时仪表盘" /><br/>
 <sub><b>Flow 实时仪表盘模板</b>——领域专属 KPI 模板，通过当前激活的 <code>DESIGN.md</code> 品牌化。</sub>
 </td>
 </tr>
@@ -181,11 +165,9 @@ OpenDesign 是**首个协作式 AI 设计 Agent 工作台**。从需求描述出
 <table>
 <tr>
 <td width="50%" valign="top">
-<img src="../../docs/screenshots/07-magazine-deck.png" alt="杂志 Deck (guizang-ppt)" /><br/>
 <sub><b>Deck 模式 (guizang-ppt)</b>——杂志版式、WebGL 主视觉、P0/P1/P2 清单。从 <a href="https://github.com/op7418/guizang-ppt-skill"><code>op7418/guizang-ppt-skill</code></a> 完整打包，保留原始许可证。</sub>
 </td>
 <td width="50%" valign="top">
-<img src="../../docs/screenshots/skills/deck-swiss-international.png" alt="瑞士 Deck" /><br/>
 <sub><b>瑞士国际风格 Deck</b>——网格锚定、单色强调。<b>15 套 Deck 模板</b>和 <b>36 个主题</b>之一，位于 <code>design-templates/html-ppt-*/</code>。</sub>
 </td>
 </tr>
