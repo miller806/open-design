@@ -150,6 +150,8 @@ import {
 } from '../analytics/onboarding-session';
 import { navigate } from '../router';
 import { agentDisplayName, agentModelDisplayName } from '../utils/agentLabels';
+import { ProjectFolderChip } from './ProjectFolderChip';
+import { usePersonalMode } from '../lib/personal-mode';
 import { isMacPlatform } from '../utils/platform';
 import {
   canAutoRenameProjectFromPrompt,
@@ -2237,6 +2239,14 @@ export function ProjectView({
   onInitialHomeRequestProgress,
 }: Props) {
   const { locale, t } = useI18n();
+  // Personal mode: the composer's agent menu lists local CLIs and BYOK only.
+  // The AMR Cloud entry is a sign-in path for an account this build does not
+  // use, so it is filtered out of the menu rather than offered and then denied.
+  const personalMode = usePersonalMode();
+  const selectableAgents = useMemo(
+    () => (personalMode ? agents.filter((agent) => agent.id !== 'amr') : agents),
+    [agents, personalMode],
+  );
   // A Home send mounts this view before the project row exists on the daemon
   // (OPEND-3334). Until it does, no project resource is read: every read
   // would 404, and an unpersisted project must not fan out conversation,
@@ -14618,7 +14628,7 @@ export function ProjectView({
     <>
       <AvatarMenu
         config={config}
-        agents={agents}
+        agents={selectableAgents}
         daemonLive={daemonLive}
         onModeChange={onModeChange}
         onOpen={() => {
@@ -14754,6 +14764,14 @@ export function ProjectView({
               >
                 <Icon name="panel-left" size={16} />
               </button>
+              {/* Which folder the agent is working in. Personal mode gives the
+                  folder to the user, so the conversation page has to name it —
+                  otherwise the only place the path ever appeared was an error.
+                  Rendered here (the docked row above the chat card) because it
+                  belongs to this conversation, not to the shell chrome. */}
+              <ProjectFolderChip
+                dir={projectDetail.resolvedDir ?? currentProject.metadata?.baseDir ?? null}
+              />
             </div>
           ) : null}
           {activeConversationId || conversationLoadError || emptyConversationReadOnlySettled || seedConversationId !== null || projectCollab.materializationPending || projectCollab.contentUpdatePending ? (

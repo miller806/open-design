@@ -103,6 +103,10 @@ export const DEFAULT_CONFIG: AppConfig = {
   orbit: DEFAULT_ORBIT,
   projectLocations: [],
   defaultProjectLocationId: 'default',
+  // Personal build default: no cloud account system. Settings → General still
+  // exposes the switch, and `OD_PERSONAL_MODE=0` on the daemon/desktop env
+  // turns it off for a cloud-capable run.
+  personalMode: true,
   // Telemetry defaults to ON so fresh-install users emit onboarding /
   // ui_click events from the first frame. The disclosure modal still
   // appears after `onboardingCompleted` flips, and Settings → Privacy
@@ -678,12 +682,33 @@ function migrateRetiredKnownProviderModel(
   return true;
 }
 
+/**
+ * The personal-mode default.
+ *
+ * ON for a real install (this is a single-machine, no-cloud build) and OFF under
+ * the test runner: dozens of existing suites describe the cloud-capable shell
+ * (AMR status polling, Workspace switching, plan badges) and start from an empty
+ * localStorage, so the product default would silently turn them into tests of a
+ * mode they never opted into. Personal-mode behaviour has its own specs
+ * (`tests/state/config-project-locations.test.ts`, `ProjectsRail`,
+ * `ProjectFolderChip`, `project-actions/useProjectDeleteFlow`).
+ */
+function personalModeDefault(): boolean {
+  try {
+    if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test') return false;
+  } catch {
+    // No `process` in the browser bundle: fall through to the product default.
+  }
+  return true;
+}
+
 export function loadConfig(): AppConfig {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
       return {
         ...DEFAULT_CONFIG,
+        personalMode: personalModeDefault(),
         pet: normalizePet(DEFAULT_PET),
         notifications: normalizeNotifications(DEFAULT_NOTIFICATIONS),
         orbit: normalizeOrbit(DEFAULT_ORBIT),
@@ -720,6 +745,12 @@ export function loadConfig(): AppConfig {
       pet: normalizePet(parsed.pet),
       notifications: normalizeNotifications(parsed.notifications),
       orbit: normalizeOrbit(parsed.orbit),
+      // A stored config written before this build has no personal-mode key; it
+      // takes the build's default (see personalModeDefault). An explicit saved
+      // value always wins.
+      ...(Object.prototype.hasOwnProperty.call(parsed, 'personalMode')
+        ? {}
+        : { personalMode: personalModeDefault() }),
     };
     // A stored `dark` / `system` theme is dead data now that the app ships
     // light-only. Flag it so the coerced value is written back once and the old
@@ -1086,12 +1117,31 @@ function ratchetOnboardingCompleted(
   return daemon != null ? daemon : local;
 }
 
+/**
+ * True once this tab has merged ANY daemon-backed config.
+ *
+ * The project-location list is daemon-owned state that the client mirrors back
+ * on every save. A client that has never hydrated (a second browser, a cleared
+ * site-data profile, a fresh headless session) holds DEFAULT_CONFIG, whose empty
+ * location list is indistinguishable from "the user removed every location" —
+ * pushing it would silently wipe the real locations and hide every project that
+ * lives outside the built-in directory. Writes therefore carry the location keys
+ * only after hydration, or when the client actually has locations to declare.
+ */
+let daemonConfigHydrated = false;
+
+/** Test seam: reset the hydration latch between cases. */
+export function __resetDaemonConfigHydratedForTests(): void {
+  daemonConfigHydrated = false;
+}
+
 export function mergeDaemonConfig(
   localConfig: AppConfig,
   daemonConfig: AppConfigPrefs | null,
 ): AppConfig {
   const next = { ...localConfig };
   if (!daemonConfig) return next;
+  daemonConfigHydrated = true;
 
   next.onboardingCompleted = ratchetOnboardingCompleted(
     localConfig.onboardingCompleted,
@@ -1178,6 +1228,13 @@ export function mergeDaemonConfig(
   }
   if (daemonConfig.defaultProjectLocationId !== undefined) {
     next.defaultProjectLocationId = daemonConfig.defaultProjectLocationId ?? 'default';
+  }
+  // The daemon copy is authoritative when it carries the key: packaged personal
+  // builds may have written it, and `OD_PERSONAL_MODE` is resolved on that side
+  // for route behaviour. A daemon that has never seen the key leaves the local
+  // (personal-build default) value alone.
+  if (daemonConfig.personalMode !== undefined) {
+    next.personalMode = daemonConfig.personalMode === true;
   }
   return next;
 }
@@ -1302,8 +1359,13 @@ export async function syncConfigToDaemon(
     privacyDecisionAt: config.privacyDecisionAt,
     allowSilentUpdates: config.allowSilentUpdates,
     customInstructions: config.customInstructions ?? null,
-    projectLocations: config.projectLocations ?? [],
-    defaultProjectLocationId: config.defaultProjectLocationId ?? 'default',
+    ...(daemonConfigHydrated || (config.projectLocations?.length ?? 0) > 0
+      ? { projectLocations: config.projectLocations ?? [] }
+      : {}),
+    ...(daemonConfigHydrated || Boolean(config.defaultProjectLocationId && config.defaultProjectLocationId !== 'default')
+      ? { defaultProjectLocationId: config.defaultProjectLocationId ?? 'default' }
+      : {}),
+    personalMode: config.personalMode === true,
   };
   try {
     const response = await fetch('/api/app-config', {

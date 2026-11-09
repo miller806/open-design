@@ -753,6 +753,12 @@ export async function createProject(
     id?: string;
     name: string;
     projectLocationId?: string;
+    /**
+     * Folder name for the project inside the selected project location. One path
+     * segment: the daemon rejects separators, hidden names and reserved names.
+     * Omitted → the daemon names the folder after the project title.
+     */
+    folderName?: string;
     skillId: string | null;
     skillCatalogScope?: LocalCatalogScope | null;
     designSystemId: string | null;

@@ -9,7 +9,10 @@ import {
   workspaceAnalyticsDimensions,
 } from '../../analytics/workspace';
 import type { Project } from '../../types';
-import { useProjectShareHistoryState } from '../share/useProjectShareHistory';
+import {
+  useProjectShareHistoryState,
+  type ProjectShareReadStatus,
+} from '../share/useProjectShareHistory';
 import { currentWorkspaceAccountGeneration } from '../../collab/workspace-identity';
 
 /** Return `false` (or reject) when the daemon refused or the request failed;
@@ -40,8 +43,15 @@ export function useProjectDeleteFlow(input: {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const accountGeneration = currentWorkspaceAccountGeneration();
   const { history, status } = useProjectShareHistoryState(target && workspaceContext ? target.id : undefined, workspaceContext, 'delete-confirmation');
-  const shareReadStatus = target && !workspaceContext ? 'error' : status;
-  const activeShareCount = history ? history.publications.filter(publication => publication.status === 'active').length : null;
+  // No Workspace context means there is no public-share plane to read at all
+  // (personal mode / a local-only daemon). That is "nothing is shared", not a
+  // failed read: reporting it as an error left the confirmation dialog's 删除
+  // button permanently disabled, so a project opened from Home could never be
+  // deleted — the dialog appeared and nothing could happen.
+  const shareReadStatus: ProjectShareReadStatus = workspaceContext ? status : 'ready';
+  const activeShareCount = workspaceContext
+    ? (history ? history.publications.filter(publication => publication.status === 'active').length : null)
+    : 0;
 
   const request = useCallback((project: Project) => {
     setFailed(false);

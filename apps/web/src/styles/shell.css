@@ -50,6 +50,18 @@
   min-height: 0;
   overflow: hidden;
 }
+/* With the persistent project rail the body becomes a two-column row: the rail
+   (its own width, owned by ProjectsRail) and the workbench. The rail is shell
+   furniture so it never re-mounts when the open project changes. */
+.workspace-shell__body--with-projects-rail {
+  display: flex;
+  min-width: 0;
+}
+.workspace-shell__body--with-projects-rail > .app {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+}
 .workspace-shell__body > .app,
 .workspace-shell__body > .entry-shell {
   height: 100%;

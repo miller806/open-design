@@ -163,6 +163,7 @@ import {
   type UpdaterModel,
   type UpdaterRestartSafety,
 } from '../lib/updater';
+import { usePersonalMode } from '../lib/personal-mode';
 import { PetSettings } from './pet/PetSettings';
 import { McpClientSection } from './McpClientSection';
 import { DesignSystemsSection } from './DesignSystemsSection';
@@ -1655,6 +1656,7 @@ export function SettingsDialog({
     context: workspaceContext,
     loading: workspaceContextLoading,
   } = useWorkspaceContext();
+  const personalMode = usePersonalMode();
   // Workspace billing drives both the plan and the money shown beside it. The
   // CLI identity remains account-scoped, but a Team badge must never be paired
   // with that account's personal wallet: the entry chrome and Settings must
@@ -3958,7 +3960,12 @@ export function SettingsDialog({
     about: { title: t('settings.about'), subtitle: t('settings.aboutHint') },
   };
   const activeHeader = sectionHeader[activeSection];
-  const visibleAgents = agents.filter(isVisibleLocalCliAgent);
+  const visibleAgents = agents.filter(
+    // Personal mode has no cloud identity, so the AMR Cloud agent card would be
+    // a sign-in prompt for an account this build does not use. Local CLIs and
+    // BYOK remain the only execution paths.
+    (agent) => isVisibleLocalCliAgent(agent) && !(personalMode && agent.id === 'amr'),
+  );
   const installedAgents = orderAgentsWithOpenDesignFirst(
     visibleAgents.filter((agent) => agent.available || deepSeekHarnessNeedsSetup(agent)),
   );
@@ -4540,7 +4547,7 @@ export function SettingsDialog({
                 </button>
               </div>
               </div>
-              {cfg.mode === 'daemon' && !amrCardSignedIn ? (
+              {cfg.mode === 'daemon' && !personalMode && !amrCardSignedIn ? (
                 // Only prompt to sign into OpenDesign Cloud when NOT already
                 // signed in — the AMR/vela session IS the cloud identity (one
                 // session drives both), so a logged-in user has nothing to do

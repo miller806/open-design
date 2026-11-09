@@ -13,7 +13,7 @@ import {
   it,
 } from 'vitest';
 
-import { agentCliEnvForAgent, readAppConfig, readMetricsConsent, writeAppConfig } from '../src/app-config.js';
+import { agentCliEnvForAgent, personalModeEnabled, readAppConfig, readMetricsConsent, writeAppConfig } from '../src/app-config.js';
 import { spawnEnvForAgent } from '../src/runtimes/env.js';
 import { readOdNextRolloutPolicy } from '../src/strategies/od-next/rollout.js';
 import { isLocalSameOrigin } from '../src/origin-validation.js';
@@ -964,6 +964,42 @@ describe('app-config telemetry prefs', () => {
     expect(cfg.agentId).toBe('claude');
     // telemetry is replaced (not deep-merged) — matches the agentModels semantics.
     expect(cfg.telemetry).toEqual({ content: true });
+  });
+});
+
+describe('app-config personalMode', () => {
+  let dataDir: string;
+
+  beforeEach(async () => {
+    dataDir = await mkdtemp(path.join(tmpdir(), 'od-personalMode-'));
+  });
+
+  afterEach(async () => {
+    await rm(dataDir, { recursive: true, force: true });
+  });
+
+  it('persists the personal-mode preference and reads it back', async () => {
+    await writeAppConfig(dataDir, { personalMode: true });
+    expect((await readAppConfig(dataDir)).personalMode).toBe(true);
+
+    await writeAppConfig(dataDir, { personalMode: false });
+    expect((await readAppConfig(dataDir)).personalMode).toBe(false);
+  });
+
+  it('drops a non-boolean personalMode instead of coercing it', async () => {
+    await writeAppConfig(dataDir, { personalMode: 'yes' as unknown as boolean });
+    expect((await readAppConfig(dataDir)).personalMode).toBeUndefined();
+  });
+
+  it('treats an absent preference as cloud-capable unless the environment pins it', () => {
+    // The saved preference is the default answer; `OD_PERSONAL_MODE` is the
+    // process-level pin a packaged personal build sets, and it outranks a saved
+    // value in both directions so a config reset cannot silently flip a build.
+    expect(personalModeEnabled({}, {})).toBe(false);
+    expect(personalModeEnabled({ personalMode: true }, {})).toBe(true);
+    expect(personalModeEnabled({ personalMode: false }, { OD_PERSONAL_MODE: '1' })).toBe(true);
+    expect(personalModeEnabled({ personalMode: true }, { OD_PERSONAL_MODE: '0' })).toBe(false);
+    expect(personalModeEnabled({ personalMode: true }, { OD_PERSONAL_MODE: ' TRUE ' })).toBe(true);
   });
 });
 

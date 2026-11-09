@@ -49,6 +49,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { coalescedGet, evictCoalescedGet } from '../lib/coalesced-get';
+import { usePersonalMode } from '../lib/personal-mode';
 import { compareRecentProjects } from '../lib/project-order';
 import {
   canReachWorkspaceBillingEntrance,
@@ -1045,6 +1046,12 @@ export function EntryTopRightCluster({
   priorityAnnouncementMetricsConsent,
 }: EntryTopRightClusterProps) {
   const { t, locale } = useI18n();
+  // Personal mode has no cloud account, so the credits/plan chrome has nothing
+  // to describe: the credits pill and the 升级 (upgrade) chip are AMR Cloud
+  // billing surfaces. Hidden here rather than at each mount because the cluster
+  // is portalled into the shared tabs chrome, so Home and the project route
+  // reach it with different `context` values.
+  const personalMode = usePersonalMode();
   const analytics = useAnalytics();
   const workspaceDimensions = workspaceAnalyticsDimensions(context);
   const [chromeActionsHost, setChromeActionsHost] = useState<HTMLElement | null>(
@@ -1325,7 +1332,7 @@ export function EntryTopRightCluster({
   // team-typed, where the wordmark draws `team` instead.
   const isFreePlan = planTier === 'free' || (labelTier ?? '').trim().toLowerCase() === 'free';
   // The seats HTML uses the Free upgrade chip for every role; it only opens quota.
-  const showUpgradePill = isFreePlan && (quotaView.sharedBilling || context?.role === 'owner');
+  const showUpgradePill = !personalMode && isFreePlan && (quotaView.sharedBilling || context?.role === 'owner');
   // Design PR #8364: the Owner's Free card sells 升级 like every paid tier. A personal
   // workspace needs no billing permission — its member IS the payer — and an
   // account B reports without any plan is upgradeable as free once the card
@@ -1348,7 +1355,7 @@ export function EntryTopRightCluster({
   // billing card under it); what it SAYS follows the zero-balance ruling
   // above — a subscriber at $0.00 keeps the plan wordmark and drops the
   // number, so the card stays reachable without a permanent zero next to it.
-  const showCreditsPill = Boolean(context || billing || balanceLabel);
+  const showCreditsPill = !personalMode && Boolean(context || billing || balanceLabel);
 
   function trackAccountAction(element: AccountMenuClickProps['element']) {
     trackAccountMenuClick(analytics.track, {
@@ -1388,8 +1395,9 @@ export function EntryTopRightCluster({
           {leadingSlot}
           {/* GitHub star chip: its own option in the cluster, right after the
               campaign badge (per product) — it used to live in the account
-              menu's social row. */}
-          {clusterVisible ? (
+              menu's social row. Personal mode drops it: a star count is community
+              marketing, not a control for a single-machine install. */}
+          {clusterVisible && !personalMode ? (
             <a
               className="entry-top-right-github"
               href={REPO_URL}
@@ -1407,7 +1415,7 @@ export function EntryTopRightCluster({
               <span>{githubStars == null ? GITHUB_STARS_FALLBACK_LABEL : formatStars(githubStars)}</span>
             </a>
           ) : null}
-          {inviteSlot}
+          {inviteSlot && !personalMode ? inviteSlot : null}
           {/* The capsule holds the credits segment alone — the avatar moved
               to the rail, and with it the account menu's hover region. The
               anchor around it owns the hover region for the billing panel
@@ -1530,7 +1538,9 @@ export function EntryTopRightCluster({
       {accountInRail
         ? createPortal(
             <div className="entry-nav-rail__account-dock">
-              <RailSocialRow page={page} dimensions={workspaceDimensions} />
+              {/* Discord / X / mail are outbound community links; a
+                  single-machine install has no community to join. */}
+              {personalMode ? null : <RailSocialRow page={page} dimensions={workspaceDimensions} />}
               <div
                 ref={accountContainerRef}
                 className={`entry-nav-rail__account${accountOpen ? ' is-menu-open' : ''}`}
@@ -2010,6 +2020,9 @@ export function EntryNavRail({
 }: Props) {
   const { t } = useI18n();
   const analytics = useAnalytics();
+  // Personal mode hides the cloud/community chrome of this rail: the 社区 entry
+  // (a cloud editorial surface) and the Discord / X / mail links.
+  const personalMode = usePersonalMode();
   const analyticsPage = entryViewToTracking(view);
   const workspaceDimensions = workspaceAnalyticsDimensions(context);
   // Portal target for the account module, which `EntryTopRightCluster` owns
@@ -2463,15 +2476,20 @@ export function EntryNavRail({
         >
           <Icon name="home" size={16} />
         </NavButton>
-        <NavButton
-          active={view === 'community'}
-          ariaLabel={communityLabel}
-          label={communityLabel}
-          onClick={() => selectView('community')}
-          testId="entry-nav-community"
-        >
-          <Icon name="globe" size={16} />
-        </NavButton>
+        {/* 社区 is a cloud editorial surface (published templates + gallery);
+            personal mode has no account to publish from or browse with, so the
+            entry is not offered. The route itself still resolves. */}
+        {personalMode ? null : (
+          <NavButton
+            active={view === 'community'}
+            ariaLabel={communityLabel}
+            label={communityLabel}
+            onClick={() => selectView('community')}
+            testId="entry-nav-community"
+          >
+            <Icon name="globe" size={16} />
+          </NavButton>
+        )}
 
         {context ? (
           <div className="entry-nav-rail__team-section">
@@ -2652,14 +2670,15 @@ export function EntryNavRail({
           {footerNotice}
           {/* A01 keeps the signed-out footer focused on its sign-in card.
               Settings already has a navigation entry; do not add a duplicate
-              local identity or message-centre row above the card. Existing
-              community links remain outside this local-row correction. */}
-          <div
-            className="entry-nav-rail__account-dock entry-nav-rail__account-dock--local"
-            data-testid="entry-nav-local-account-dock"
-          >
-            <RailSocialRow page={analyticsPage} dimensions={workspaceDimensions} />
-          </div>
+              local identity or message-centre row above the card. */}
+          {personalMode ? null : (
+            <div
+              className="entry-nav-rail__account-dock entry-nav-rail__account-dock--local"
+              data-testid="entry-nav-local-account-dock"
+            >
+              <RailSocialRow page={analyticsPage} dimensions={workspaceDimensions} />
+            </div>
+          )}
         </div>
       )}
       </div>

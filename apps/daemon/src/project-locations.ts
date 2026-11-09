@@ -39,6 +39,56 @@ export function locationProjectDir(location: ProjectLocation, projectId: string)
   return path.join(location.path, projectId);
 }
 
+// Characters Windows forbids in a directory name, plus control characters that
+// would make the folder unaddressable from a shell. A project folder is ONE path
+// segment inside a location: no separators, no drive letters, no traversal.
+const INVALID_FOLDER_NAME_CHARS = /[<>:"/\\|?*\u0000-\u001f]/;
+// Device names Windows reserves at every level; a directory may not be called
+// `con`, `nul`, `com1`, … even with an extension.
+const WINDOWS_RESERVED_FOLDER_NAME = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/i;
+const PROJECT_FOLDER_NAME_MAX = 64;
+
+/**
+ * Validate a user-supplied project folder name.
+ *
+ * Returns the cleaned single segment, or `null` when the name cannot be a
+ * folder inside a project location. This is the create-time gate for
+ * `POST /api/projects`'s `folderName`: a rejected name fails the request loudly
+ * instead of silently falling back to the daemon-managed id folder, because the
+ * whole point of the field is that the user chose the folder.
+ */
+export function sanitizeProjectFolderName(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (INVALID_FOLDER_NAME_CHARS.test(trimmed)) return null;
+  if (trimmed === '.' || trimmed === '..') return null;
+  // Leading dots are hidden segments, which the imported-folder file API refuses
+  // to traverse anyway; ending with a dot/double space is a Windows-only trap.
+  if (trimmed.startsWith('.') || /\.$/.test(trimmed)) return null;
+  if (WINDOWS_RESERVED_FOLDER_NAME.test(trimmed.replace(/\.[^.]*$/, ''))) return null;
+  const capped = Array.from(trimmed).slice(0, PROJECT_FOLDER_NAME_MAX).join('').trim();
+  if (!capped) return null;
+  return capped;
+}
+
+/**
+ * Best-effort folder name derived from a project title, for callers that want a
+ * human-readable directory without asking the user to type one. Never rejects:
+ * a title that cannot be a folder name falls back to `fallback` (the project
+ * id), so project creation always succeeds.
+ */
+export function projectFolderNameFromTitle(title: unknown, fallback: string): string {
+  if (typeof title === 'string') {
+    // Collapse separators into single spaces first: `A/B` should become `A B`,
+    // not be rejected, because the title is not a user folder choice.
+    const softened = title.replace(/[<>:"/\\|?*\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const sanitized = sanitizeProjectFolderName(softened);
+    if (sanitized) return sanitized;
+  }
+  return fallback;
+}
+
 function assertInsideLocation(locationRoot: string, projectDir: string): void {
   const relative = path.relative(locationRoot, projectDir);
   if (relative === '' || relative.startsWith('..') || path.isAbsolute(relative)) {
@@ -46,20 +96,72 @@ function assertInsideLocation(locationRoot: string, projectDir: string): void {
   }
 }
 
-export async function createLocationProjectDir(location: ProjectLocation, projectId: string): Promise<string> {
+export async function createLocationProjectDir(
+  location: ProjectLocation,
+  projectId: string,
+  options: { folderName?: string | null } = {},
+): Promise<string> {
   const root = await realpath(location.path);
-  const target = locationProjectDir({ ...location, path: root }, projectId);
-  await mkdir(target, { recursive: false });
-  const info = await lstat(target);
-  if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('project directory must be a real directory');
-  const canonical = await realpath(target);
-  assertInsideLocation(root, canonical);
-  return canonical;
+  // The folder name is the user's choice when they supplied one; the project id
+  // is only the fallback. Either way the directory is created, never adopted:
+  // an existing folder must not be silently claimed as a brand-new project.
+  const requested = options.folderName ? sanitizeProjectFolderName(options.folderName) : null;
+  const base = requested ?? projectId;
+  let candidate = base;
+  for (let attempt = 2; attempt <= 500; attempt += 1) {
+    const target = path.join(root, candidate);
+    try {
+      await mkdir(target, { recursive: false });
+    } catch (err) {
+      const code = (err as { code?: string } | null)?.code;
+      if (code === 'EEXIST') {
+        // A real directory already using this name is a genuine title collision
+        // between two projects — suffix and continue. Anything else squatting
+        // the name (a symlink, a file, a junction) is not adopted and not
+        // routed around: fail the create rather than quietly landing in
+        // `<name> (2)` while the user believes their chosen folder was used.
+        let existing: Awaited<ReturnType<typeof lstat>> | null = null;
+        try {
+          existing = await lstat(target);
+        } catch {
+          existing = null;
+        }
+        if (!existing || existing.isSymbolicLink() || !existing.isDirectory()) {
+          throw new Error('project directory must be a real directory');
+        }
+        candidate = `${base} (${attempt})`;
+        continue;
+      }
+      throw err;
+    }
+    const info = await lstat(target);
+    if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('project directory must be a real directory');
+    const canonical = await realpath(target);
+    assertInsideLocation(root, canonical);
+    return canonical;
+  }
+  throw new Error('could not allocate a project directory inside the project location');
+}
+
+/**
+ * A single directory name that cannot escape its parent.
+ *
+ * Scan/adoption reads directories the USER created, so a name only has to be a
+ * plain path segment — project-id shape is not required (personal mode names
+ * folders after the project title: `Q3 Launch`, `季度汇报`). The realpath +
+ * containment check that follows is what actually keeps the result inside the
+ * location.
+ */
+function isPlainChildSegment(name: string): boolean {
+  if (!name) return false;
+  if (name === '.' || name === '..') return false;
+  if (name.includes('/') || name.includes('\\')) return false;
+  return true;
 }
 
 export async function canonicalLocationChildDir(location: ProjectLocation, childName: string): Promise<string> {
   const root = await realpath(location.path);
-  if (!isSafeId(childName)) throw new Error('invalid project directory name');
+  if (!isPlainChildSegment(childName)) throw new Error('invalid project directory name');
   const target = path.join(root, childName);
   const info = await lstat(target);
   if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('project directory must be a real directory');

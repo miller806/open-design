@@ -20,7 +20,7 @@ import {
   spawnEnvForAgent,
 } from '../agents.js';
 import { readAnalyticsContext } from '../analytics.js';
-import { agentCliEnvForAgent, type AppConfigPrefs, writeAppConfig } from '../app-config.js';
+import { agentCliEnvForAgent, personalModeEnabled, type AppConfigPrefs, writeAppConfig } from '../app-config.js';
 import { stripAmrEndpointOverrides } from '../integrations/amr-endpoint-binding.js';
 import {
   validateExternalPluginContext,
@@ -1279,6 +1279,14 @@ export function registerVelaRoutes(app: Express, deps: RegisterVelaRoutesDeps): 
       }
       const refresh = _req.query.refresh === '1' || _req.query.refresh === 'true';
       const status = readVelaLoginStatus(mergeVelaEnv(env, configuredEnv));
+      // Personal mode has no cloud account, so there is no plan/balance to read:
+      // skip the `vela billing summary` shell-out entirely. Without this the
+      // status poll keeps spawning the CLI and logging a 403 for an account the
+      // build does not use.
+      if (personalModeEnabled(appConfig) && status.loggedIn) {
+        res.json(status);
+        return;
+      }
       // Reported on every response, signed in or not: the client builds console
       // links (wallet, plans, upgrade) from it and must not have to carry a
       // hostname table for internal AMR environments. The resolver also sees

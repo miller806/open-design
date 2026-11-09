@@ -19,6 +19,7 @@ import {
   workspaceContextHasWorkspaceIdentity,
 } from '@open-design/contracts';
 import { coalescedGet, forceCoalescedGet } from '../lib/coalesced-get';
+import { isPersonalModeEnabled, usePersonalMode } from '../lib/personal-mode';
 import { BackoffController, type BackoffOptions } from '../lib/backoff';
 import {
   markProjectDisplaySnapshotsDirty,
@@ -252,6 +253,10 @@ export function currentWorkspaceContextRequestToken(): string {
 }
 
 async function fetchWorkspaceDirectory(): Promise<WorkspaceDirectoryResponse> {
+  // Personal mode has no Workspace plane (the daemon never mounts those routes),
+  // so the directory read is not attempted at all instead of 404ing on every
+  // mount and poll.
+  if (isPersonalModeEnabled()) return { items: [], activeWorkspaceId: null };
   const response = await fetch('/api/workspace/directory', { cache: 'no-store' });
   if (!response.ok) {
     const error = new Error(`workspace-directory ${response.status}`) as Error & {
@@ -654,6 +659,10 @@ export function lastResolvedTeamProjects(
 }
 
 export function useWorkspaceContext(): WorkspaceContextState {
+  // Personal (single-machine, no-cloud) mode answers with the local/signed-out
+  // shape and issues no workspace read at all: see the guard at the top of
+  // `loadContext` and the projection in the returned memo.
+  const personalMode = usePersonalMode();
   const [state, setState] = useState<WorkspaceContextState>(() => ({
     context: cachedWorkspaceContext,
     resourceReadIdentity:
@@ -717,6 +726,10 @@ export function useWorkspaceContext(): WorkspaceContextState {
       exactScopeOnly?: boolean;
     } = {},
   ) => {
+    // Personal mode: never read the cloud Workspace directory or context. Without
+    // this guard the shell would still pull billing, members and the workspace
+    // project catalog for an account this build does not use.
+    if (personalMode) return;
     if (currentWorkspaceRemoval()) return;
     const requestEpoch = ++requestEpochRef.current;
     const requestGeneration = workspaceContextRequestToken;
@@ -903,7 +916,7 @@ export function useWorkspaceContext(): WorkspaceContextState {
       // poll or a focus event.
       if (!unsupported && !reauthRequired) scheduleWorkspaceContextRetry(requestGeneration);
     }
-  }, []);
+  }, [personalMode]);
 
   useEffect(() => {
     void loadContext();
@@ -1041,8 +1054,21 @@ export function useWorkspaceContext(): WorkspaceContextState {
 
   const accountGeneration = currentWorkspaceAccountGeneration();
   return useMemo(
-    () => ({ ...state, accountGeneration }),
-    [accountGeneration, state],
+    () => (personalMode
+      // Personal mode is single-machine and has no cloud account, so there is no
+      // Workspace to be in. Collapsing to the signed-out local shape is the
+      // existing "no cloud identity" state every consumer already handles: the
+      // project catalog becomes the headerless local one, and no workspace-scoped
+      // read (billing, members, team projects) is issued on this shell's behalf.
+      ? {
+          context: null as WorkspaceCollabContext | null,
+          resourceReadIdentity: null,
+          loading: false,
+          identityChangePending: false,
+          accountGeneration,
+        }
+      : { ...state, accountGeneration }),
+    [accountGeneration, personalMode, state],
   );
 }
 

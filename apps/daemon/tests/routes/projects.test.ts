@@ -1593,8 +1593,10 @@ describe('project locations routes', () => {
     expect(createBody.project.metadata?.importedFrom).toBe('project-location');
     expect(createBody.project.metadata?.projectLocationId).toBe('create-ext');
 
-    // The project should be under <extDir>/<projectId> (ensureProjectLocation realpaths)
-    const expectedProjectDir = await realpath(path.join(extDir, projectId));
+    // The project folder is named after the project title inside the location,
+    // not after the project id (personal-mode folder ownership): the user sees
+    // `External Project`, not a generated id, in their own directory.
+    const expectedProjectDir = await realpath(path.join(extDir, 'External Project'));
     expect(createBody.project.metadata?.baseDir).toBe(expectedProjectDir);
 
     // Verify .open-design/project.json was written
@@ -1636,10 +1638,115 @@ describe('project locations routes', () => {
     };
     expect(body.project.metadata?.projectLocationId).toBe(locationId);
     expect(body.project.metadata?.importedFrom).toBe('project-location');
-    expect(body.project.metadata?.baseDir).toBe(await realpath(path.join(extDir, projectId)));
+    // Title-named folder inside the location (see the create route's folderName
+    // resolution): id naming is what personal mode removes.
+    expect(body.project.metadata?.baseDir).toBe(
+      await realpath(path.join(extDir, 'Default location project')),
+    );
 
     await putAppConfig({ defaultProjectLocationId: null });
     await putProjectLocations([]);
+  });
+
+  it('POST /api/projects puts the project in the caller-named folder', async () => {
+    const extDir = makeTempDir();
+    await putProjectLocations([{ id: 'named-ext', name: 'Named External', path: extDir }]);
+
+    const projectId = `named-proj-${Date.now()}`;
+    const createResp = await fetch(`${baseUrl}/api/projects`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: projectId,
+        name: 'Title That Is Not Used',
+        skillId: null,
+        designSystemId: null,
+        projectLocationId: 'named-ext',
+        folderName: 'my-folder',
+      }),
+    });
+    expect(createResp.status).toBe(200);
+    const body = (await createResp.json()) as {
+      project: { metadata?: { baseDir?: string } };
+    };
+    // The explicit name wins over the title: this is the whole point of letting
+    // the user own the folder.
+    expect(body.project.metadata?.baseDir).toBe(await realpath(path.join(extDir, 'my-folder')));
+
+    await putProjectLocations([]);
+  });
+
+  it('POST /api/projects rejects a folderName that cannot be one path segment', async () => {
+    const extDir = makeTempDir();
+    await putProjectLocations([{ id: 'bad-name-ext', name: 'Bad Name External', path: extDir }]);
+
+    for (const folderName of ['../escape', 'nested/child', '.hidden', 'con']) {
+      const resp = await fetch(`${baseUrl}/api/projects`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: `bad-name-${Date.now()}-${folderName.replace(/\W/g, '')}`,
+          name: 'Bad Name Project',
+          projectLocationId: 'bad-name-ext',
+          folderName,
+        }),
+      });
+      // Fails loudly instead of silently creating the daemon-managed id folder:
+      // the caller believes it chose this folder.
+      expect(resp.status).toBe(400);
+      const body = (await resp.json()) as { error?: { code?: string } };
+      expect(body.error?.code).toBe('BAD_REQUEST');
+    }
+
+    await putProjectLocations([]);
+  });
+
+  it('deleting a project removes the folder it was given inside the location', async () => {
+    const extDir = makeTempDir();
+    await putProjectLocations([{ id: 'delete-ext', name: 'Delete External', path: extDir }]);
+
+    const projectId = `delete-proj-${Date.now()}`;
+    const createResp = await fetch(`${baseUrl}/api/projects`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: projectId,
+        name: 'Delete Me',
+        skillId: null,
+        designSystemId: null,
+        projectLocationId: 'delete-ext',
+        folderName: 'delete-me',
+      }),
+    });
+    expect(createResp.status).toBe(200);
+    const projectDir = await realpath(path.join(extDir, 'delete-me'));
+    expect((await stat(projectDir)).isDirectory()).toBe(true);
+
+    const delResp = await fetch(`${baseUrl}/api/projects/${projectId}`, { method: 'DELETE' });
+    expect(delResp.status).toBe(200);
+    // A project the daemon created inside the location owns that folder: deleting
+    // the project must delete it, or the location fills with orphans.
+    await expect(realpath(projectDir)).rejects.toThrow();
+
+    await putProjectLocations([]);
+  });
+
+  it('deleting a project never removes the folder the user imported', async () => {
+    const userDir = makeTempDir();
+    await writeFile(path.join(userDir, 'index.html'), '<h1>mine</h1>', 'utf8');
+    const importResp = await fetch(`${baseUrl}/api/import/folder`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ baseDir: userDir }),
+    });
+    expect(importResp.status).toBe(200);
+    const importBody = (await importResp.json()) as { project: { id: string } };
+    const projectId = importBody.project.id;
+
+    const delResp = await fetch(`${baseUrl}/api/projects/${projectId}`, { method: 'DELETE' });
+    expect(delResp.status).toBe(200);
+    // The user's own folder predates the project and is never ours to delete.
+    expect((await stat(path.join(userDir, 'index.html'))).isFile()).toBe(true);
   });
 
   it('POST /api/projects falls back to built-in storage when configured default location is unavailable', async () => {
@@ -1829,8 +1936,10 @@ describe('project locations routes', () => {
     const realTargetDir = path.join(extDir, 'real-target');
     await mkdir(realTargetDir, { recursive: true });
 
-    // Pre-create a symlink at <extDir>/<projectId> pointing to another directory
-    const symlinkPath = path.join(extDir, projectId);
+    // Pre-create a symlink where the create would put the folder. The target
+    // folder is the project TITLE (folderName defaults to it), so the symlink
+    // must squat that name — the create must refuse to adopt or route around it.
+    const symlinkPath = path.join(extDir, 'Symlink Project');
     await symlink(realTargetDir, symlinkPath);
 
     const resp = await fetch(`${baseUrl}/api/projects`, {
@@ -2001,8 +2110,9 @@ describe('project locations routes', () => {
     const beforeBody = (await listBefore.json()) as { projects: Array<{ id: string }> };
     expect(beforeBody.projects.some((p) => p.id === projectId)).toBe(true);
 
-    // The project directory and manifest should exist on disk
-    const expectedProjectDir = await realpath(path.join(extDir, projectId));
+    // The project directory and manifest should exist on disk, named after the
+    // project title inside the external location.
+    const expectedProjectDir = await realpath(path.join(extDir, 'Project To Unregister'));
     const manifestPath = path.join(expectedProjectDir, '.open-design', 'project.json');
     const manifestBefore = await readFile(manifestPath, 'utf8');
     expect(JSON.parse(manifestBefore).id).toBe(projectId);

@@ -57,6 +57,15 @@ describe('isVisibleLocalCliAgent', () => {
     expect(isVisibleLocalCliAgent({ id: 'byok-opencode' })).toBe(false);
     expect(isVisibleLocalCliAgent({ id: 'opencode' })).toBe(true);
   });
+
+  // Personal mode has no cloud identity, so the AMR Cloud agent — whose whole
+  // purpose is a cloud-account sign-in for credits — must not be offered. The
+  // default (no options) keeps it visible for the cloud-capable shell.
+  it('hides the cloud AMR agent only in personal mode', () => {
+    expect(isVisibleLocalCliAgent({ id: 'amr' })).toBe(true);
+    expect(isVisibleLocalCliAgent({ id: 'amr' }, { personalMode: true })).toBe(false);
+    expect(isVisibleLocalCliAgent({ id: 'codex' }, { personalMode: true })).toBe(true);
+  });
 });
 
 describe('deepSeekHarnessNeedsSetup', () => {
