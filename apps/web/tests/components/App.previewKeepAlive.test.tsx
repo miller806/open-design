@@ -58,6 +58,14 @@ vi.mock('../../src/components/EntryView', () => ({
   EntryView: () => <div>Entry view</div>,
 }));
 
+vi.mock('../../src/components/WorkbenchNewProjectModal', () => ({
+  WorkbenchNewProjectModal: ({ onClose }: { onClose: () => void }) => (
+    <div role="dialog" aria-label="New project">
+      <button onClick={onClose}>Cancel new project</button>
+    </div>
+  ),
+}));
+
 vi.mock('../../src/components/ProjectView', () => ({
   ProjectView: ({
     project,
@@ -301,6 +309,20 @@ describe('App preview keep-alive invalidation', () => {
     cleanup();
     vi.unstubAllGlobals();
     vi.clearAllMocks();
+  });
+
+  it('opens and cancels new project without navigating or evicting the current preview', async () => {
+    render(<App />);
+    await screen.findByRole('button', { name: 'Back to projects' });
+    mockedNavigate.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: /^(新建项目|New project)$/i }));
+    expect(screen.getByRole('dialog', { name: 'New project' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Back to projects' })).toBeTruthy();
+    expect(mockedNavigate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel new project' }));
+    expect(screen.queryByRole('dialog', { name: 'New project' })).toBeNull();
+    expect(mockedNavigate).not.toHaveBeenCalled();
+    expect(evictProjectMock).not.toHaveBeenCalled();
   });
 
   it.each([

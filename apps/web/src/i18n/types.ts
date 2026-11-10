@@ -1557,6 +1557,9 @@ export interface Dict {
   'workingDirPicker.defaultLabel': string;
   'workingDirPicker.projectFolder': string;
   'workingDirPicker.projectFolderHint': string;
+  'newproj.folderPathPlaceholder': string;
+  'newproj.folderRequiredHint': string;
+  'newproj.moreSettings': string;
   'workingDirPicker.chooseFolder': string;
   'handoff.toTarget': string;
   'handoff.openInTarget': string;

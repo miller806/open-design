@@ -4,11 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { NewProjectPanel } from '../../src/components/NewProjectPanel';
 import { I18nProvider } from '../../src/i18n';
 
-/**
- * Personal edition: a new project IS the folder the user picks. Creating one
- * must link that folder as the project root instead of minting a managed
- * folder under the daemon data dir and bolting a working directory onto it.
- */
+/** A required folder must reach the full creation payload without losing form selections. */
 const pickedFolder = 'C:/Users/me/designs/landing-page';
 const importFolder = vi.fn(async (_baseDir: string, _name: string) => undefined);
 const onCreate = vi.fn();
@@ -32,7 +28,7 @@ function renderPanel() {
         templates={[]}
         promptTemplates={[]}
         onCreate={onCreate}
-        onCreateInFolder={importFolder}
+        requireProjectFolder
         mediaProviders={{}}
         connectors={[]}
         connectorsLoading={false}
@@ -61,14 +57,13 @@ it('creates the project in the folder the user picked', async () => {
   renderPanel();
 
   fireEvent.click(await screen.findByTestId('new-project-choose-folder'));
-  await waitFor(() => expect(screen.getByTestId('new-project-folder-path')).toHaveTextContent(pickedFolder));
+  await waitFor(() => expect(screen.getByTestId('new-project-folder-path')).toHaveValue(pickedFolder));
 
-  fireEvent.click(screen.getByTestId('new-project-create'));
+  fireEvent.click(screen.getByTestId('create-project'));
 
-  await waitFor(() => expect(importFolder).toHaveBeenCalledTimes(1));
-  // An unnamed project takes the folder's own name, so the daemon can title it.
-  expect(importFolder).toHaveBeenCalledWith(pickedFolder, '');
-  expect(onCreate).not.toHaveBeenCalled();
+  await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
+  expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({metadata: expect.objectContaining({userWorkingDir: pickedFolder, kind: 'prototype'})}));
+  expect(importFolder).not.toHaveBeenCalled();
 });
 
 it('uses the name the user typed for the chosen folder', async () => {
@@ -78,15 +73,23 @@ it('uses the name the user typed for the chosen folder', async () => {
   });
   fireEvent.click(screen.getByTestId('new-project-choose-folder'));
   await waitFor(() => expect(screen.getByTestId('new-project-folder-path')).toBeTruthy());
-  fireEvent.click(screen.getByTestId('new-project-create'));
-  await waitFor(() => expect(importFolder).toHaveBeenCalledWith(pickedFolder, 'Q3 Landing'));
+  fireEvent.click(screen.getByTestId('create-project'));
+  await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({name: 'Q3 Landing', metadata: expect.objectContaining({userWorkingDir: pickedFolder})})));
 });
 
 it('cannot create a project before a folder is chosen', async () => {
   renderPanel();
-  const create = await screen.findByTestId('new-project-create');
+  const create = await screen.findByTestId('create-project');
   expect(create).toBeDisabled();
   fireEvent.click(create);
   expect(onCreate).not.toHaveBeenCalled();
   expect(importFolder).not.toHaveBeenCalled();
+});
+
+it('accepts a pasted folder path and keeps the selected project type', async () => {
+  renderPanel();
+  fireEvent.click(screen.getByRole('tab', {name: 'Slide deck'}));
+  fireEvent.change(screen.getByTestId('new-project-folder-path'), {target: {value: pickedFolder}});
+  fireEvent.click(screen.getByTestId('create-project'));
+  expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({metadata: expect.objectContaining({kind: 'deck', userWorkingDir: pickedFolder})}));
 });

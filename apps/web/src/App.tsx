@@ -72,6 +72,9 @@ import {
   type ProjectNameAuthorityResolution,
 } from './components/ProjectView';
 import { ProjectsRail } from './components/ProjectsRail';
+import { WorkbenchNewProjectModal } from './components/WorkbenchNewProjectModal';
+import { ProjectImportActions } from './components/ProjectImportActions';
+import { createProjectInputFromPanel } from './components/new-project-create';
 import type { ObservedPublicShareLink, ObservedShareUpdateRequest } from './components/share/observed-public-share-link';
 import type { ShareLoginReturn } from './components/share/share-login-return';
 import { SignedOutObservedShare } from './components/share/SignedOutObservedShare';
@@ -1160,6 +1163,7 @@ function AppInner() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   // Set by the workbench rail; consumed once by EntryShell's New Project panel.
   const [pendingNewProject, setPendingNewProject] = useState(false);
+  const [workbenchNewProjectOpen, setWorkbenchNewProjectOpen] = useState(false);
   // Surfaced when a Home-picked working dir could not be applied to a freshly
   // created project (expired/invalid desktop token, daemon rejection). Without
   // this the failure was swallowed and the user believed their folder was in
@@ -1607,6 +1611,9 @@ function AppInner() {
   // can't overwrite the saved state with `''` before hydration lands.
   const [composioConfigLoading, setComposioConfigLoading] = useState(true);
   const route = useRoute();
+  useEffect(() => {
+    if (route.kind !== 'project') setWorkbenchNewProjectOpen(false);
+  }, [route.kind]);
   useLayoutEffect(() => {
     navigationTiming.observeRoute(route);
   }, [route]);
@@ -3582,7 +3589,7 @@ function AppInner() {
         );
         return false;
       }
-      const project = result.appliedPluginSnapshotId
+      let project = result.appliedPluginSnapshotId
         ? {
             ...result.project,
             appliedPluginSnapshotId: result.appliedPluginSnapshotId,
@@ -3622,13 +3629,29 @@ function AppInner() {
         let workingDirHandoffFailed = false;
         if (userWorkingDir) {
           try {
-            await replaceProjectWorkingDir(
+            const folderResult = await replaceProjectWorkingDir(
               result.project.id,
               userWorkingDir,
               input.userWorkingDirToken,
               createWorkspaceContext,
             );
+            if (folderResult?.project) {
+              project = { ...project, ...folderResult.project };
+            }
           } catch (err) {
+            // Form creation must not close successfully in a different folder.
+            // Optimistic Home sends retain their existing recovery surface.
+            if (input.requireProjectFolder && !optimisticProjectId) {
+              try {
+                // No uploads or user runs have begun: discard only this newly
+                // created record whose required folder could not be applied.
+                await deleteProjectApi(project.id, createWorkspaceContext);
+                clearLocalProject(project.id, { deleted: true });
+              } catch (cleanupError) {
+                console.warn('Failed to discard incomplete project', project.id, cleanupError);
+              }
+              throw err;
+            }
             // The desktop working-dir token is short-lived (~60s TTL); if the
             // user lingered on Home or the POST was otherwise rejected, the
             // handoff fails AFTER the project already exists. Do NOT swallow
@@ -3860,6 +3883,7 @@ function AppInner() {
       beginOptimisticProjectCreation,
       rememberLocalProject,
       rollbackOptimisticProjectCreation,
+      clearLocalProject,
       t,
     ],
   );
@@ -4059,22 +4083,6 @@ function AppInner() {
         message: err instanceof Error ? err.message : 'The ZIP could not be imported.',
       };
     }
-  }, [rememberLocalProject]);
-
-  // Personal edition: "new project" and "open this folder" are the same act.
-  // The picked folder becomes the project root, so no managed folder is minted.
-  const handleCreateInFolder = useCallback(async (baseDir: string, name: string) => {
-    const result = await importFolderProject(
-      { baseDir, ...(name.trim() ? { name: name.trim() } : {}) },
-      resolvedWorkspaceContextForWrite(workspaceContextStateRef.current),
-    );
-    rememberLocalProject(result.project.id);
-    setProjects((curr) => [result.project, ...curr.filter((p) => p.id !== result.project.id)]);
-    navigate({
-      kind: 'project',
-      projectId: result.project.id,
-      fileName: result.entryFile ?? null,
-    });
   }, [rememberLocalProject]);
 
   const handleImportFolder = useCallback(async (baseDir: string) => {
@@ -6129,7 +6137,6 @@ function AppInner() {
         onCreateProject={handleCreateProject}
         onCreatePluginShareProject={handleCreatePluginShareProject}
         onImportClaudeDesign={handleImportClaudeDesign}
-        onCreateInFolder={handleCreateInFolder}
         pendingNewProject={pendingNewProject}
         onPendingNewProjectHandled={() => setPendingNewProject(false)}
         onImportFolder={handleImportFolder}
@@ -6239,25 +6246,58 @@ function AppInner() {
               changes. */}
           {route.kind === 'project' && activeProject ? (
             <ProjectsRail
+              folderAction={<ProjectImportActions onImportFolder={handleImportFolder} onImportFolderResponse={handleImportFolderResponse} />}
               projects={projects}
               activeProjectId={activeProject.id}
               onOpenProject={(id) => { void handleOpenProject(id); }}
               onBrowseProjects={() => navigate({ kind: 'home', view: 'projects' })}
               onRenameProject={(id, name) => handleRenameProject(id, name)}
-              // 新建项目 creates a blank project and lands IN it — the entry
-              // rail's behaviour, which this rail mirrors. Bouncing to Home was
-              // the wrong shape here: from the workbench the user wants another
-              // project open, not their current one closed behind a composer.
               onNewProject={() => {
-                // The panel is where a project gets its name and its folder.
-                setPendingNewProject(true);
-                navigate({ kind: 'home', view: 'home' });
+                setWorkbenchNewProjectOpen(true);
               }}
               onOpenSettings={() => openSettings()}
               onDeleteProject={handleDeleteProject}
             />
           ) : null}
           {appMain}
+          {route.kind === 'project' && workbenchNewProjectOpen ? (
+            <WorkbenchNewProjectModal
+              open
+              skills={enabledSkills}
+              designTemplates={enabledDesignTemplates}
+              designSystems={enabledDS}
+              defaultDesignSystemId={config.designSystemId}
+              templates={templates}
+              onDeleteTemplate={handleDeleteTemplate}
+              promptTemplates={promptTemplates}
+              mediaProviders={config.mediaProviders}
+              loading={workspaceSkills.identity !== currentWorkspaceCatalogIdentity || skillsLoading}
+              onCreate={async (input) => {
+                const created = await handleCreateProject(createProjectInputFromPanel(input));
+                if (created) setWorkbenchNewProjectOpen(false);
+                return created;
+              }}
+              requireProjectFolder
+              onImportClaudeDesign={async (file) => {
+                const result = await handleImportClaudeDesign(file);
+                if (result?.ok) setWorkbenchNewProjectOpen(false);
+                return result;
+              }}
+              onImportFolder={async (baseDir) => {
+                await handleImportFolder(baseDir);
+                setWorkbenchNewProjectOpen(false);
+              }}
+              onImportFolderResponse={async (response) => {
+                await handleImportFolderResponse(response);
+                setWorkbenchNewProjectOpen(false);
+              }}
+              onOpenConnectorsTab={() => {
+                setWorkbenchNewProjectOpen(false);
+                openConnectorIntegrations();
+              }}
+              onClose={() => setWorkbenchNewProjectOpen(false)}
+            />
+          ) : null}
         </div>
       </div>
       {clientType === 'desktop' ? null : (

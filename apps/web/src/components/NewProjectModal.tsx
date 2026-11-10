@@ -43,6 +43,7 @@ interface Props {
   connectorsLoading?: boolean;
   loading?: boolean;
   onCreate: (input: CreateInput & { requestId?: string }) => Promise<boolean> | boolean | void;
+  requireProjectFolder?: boolean;
   onImportClaudeDesign?: (
     file: File,
   ) => Promise<ImportClaudeDesignOutcome | void> | ImportClaudeDesignOutcome | void;
@@ -81,6 +82,7 @@ function NewProjectModalBody({
   connectorsLoading,
   loading,
   onCreate,
+  requireProjectFolder,
   onImportClaudeDesign,
   onImportFolder,
   onImportFolderResponse,
@@ -105,7 +107,7 @@ function NewProjectModalBody({
   useEffect(() => lockWebModalScroll(), []);
 
   useEffect(() => {
-    closeRef.current?.focus();
+    document.querySelector<HTMLInputElement>('[data-testid="new-project-name"]')?.focus();
   }, []);
 
   async function handleCreate(input: CreateInput & { requestId?: string }) {
@@ -156,14 +158,15 @@ function NewProjectModalBody({
             className="new-project-modal__close"
             onClick={onClose}
             disabled={creating}
-            aria-label="Close"
-            title="Close (Esc)"
+            aria-label={t('common.close')}
+            title={`${t('common.close')} (Esc)`}
           >
             <Icon name="close" size={14} />
           </button>
         </header>
         <div className="new-project-modal__body">
           <NewProjectPanel
+            simplified
             skills={skills}
             {...(designTemplates ? { designTemplates } : {})}
             designSystems={designSystems}
@@ -178,6 +181,7 @@ function NewProjectModalBody({
             onCreate={(input) => {
               void handleCreate(input);
             }}
+            requireProjectFolder={requireProjectFolder}
             {...(onImportClaudeDesign ? { onImportClaudeDesign } : {})}
             {...(onImportFolder ? { onImportFolder } : {})}
             {...(onImportFolderResponse ? { onImportFolderResponse } : {})}

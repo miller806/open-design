@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { I18nProvider } from '../../src/i18n';
 import { ProjectsRail } from '../../src/components/ProjectsRail';
+import { resetProjectRunStatusStore } from '../../src/hooks/useProjectRunStatuses';
 import type { Project } from '../../src/types';
 
 afterEach(() => {
@@ -42,6 +43,29 @@ function view(overrides: Partial<Parameters<typeof ProjectsRail>[0]> = {}) {
 }
 
 describe('projects rail', () => {
+  it('resizes within bounds, remembers width, and restores it after expanding', () => {
+    view();
+    const handle = screen.getByRole('separator');
+    fireEvent.keyDown(handle, { key: 'ArrowRight' });
+    expect(handle.getAttribute('aria-valuenow')).toBe('216');
+    expect(window.localStorage.getItem('od.projects-rail.width')).toBe('216');
+    cleanup();
+    view();
+    expect(screen.getByRole('separator').getAttribute('aria-valuenow')).toBe('216');
+    fireEvent.click(screen.getByTestId('projects-rail-toggle'));
+    expect(screen.queryByRole('separator')).toBeNull();
+    fireEvent.click(screen.getByTestId('projects-rail-toggle'));
+    const restored = screen.getByRole('separator');
+    expect(restored.getAttribute('aria-valuenow')).toBe('216');
+    fireEvent.keyDown(restored, { key: 'End' });
+    fireEvent.keyDown(restored, { key: 'ArrowRight' });
+    expect(restored.getAttribute('aria-valuenow')).toBe('360');
+    fireEvent.keyDown(restored, { key: 'Home' });
+    fireEvent.keyDown(restored, { key: 'ArrowLeft' });
+    expect(restored.getAttribute('aria-valuenow')).toBe('160');
+    fireEvent.doubleClick(restored);
+    expect(restored.getAttribute('aria-valuenow')).toBe('208');
+  });
   it('renames a project in place from its row', async () => {
     const onRenameProject = vi.fn();
     view({ onRenameProject });
@@ -127,5 +151,92 @@ describe('projects rail', () => {
   it('hides the delete action when the caller cannot delete', () => {
     view({ onDeleteProject: undefined });
     expect(screen.queryAllByTestId('projects-rail-delete')).toHaveLength(0);
+  });
+});
+
+// Once a project is open, this rail is the ONLY project list on screen — the
+// entry rail's 最近项目 list and the tab switcher's dropdown both unmount with
+// their surfaces. A run in flight therefore had nowhere to show itself, and two
+// projects were indistinguishable to a user waiting on one of them.
+const originalFetch = globalThis.fetch;
+let runsByProject: Record<string, { status: string }> = {};
+
+function stubRunsFeed() {
+  globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    const match = /^\/api\/runs\?projectId=([^&]+)$/.exec(url);
+    const projectId = match ? decodeURIComponent(match[1]!) : null;
+    const fixture = projectId ? runsByProject[projectId] : undefined;
+    const runs = fixture && projectId
+      ? [{
+          id: `run-${projectId}`,
+          projectId,
+          conversationId: null,
+          assistantMessageId: null,
+          agentId: 'claude',
+          status: fixture.status,
+          createdAt: 1,
+          updatedAt: 2,
+        }]
+      : [];
+    return new Response(
+      JSON.stringify({ runs, awaitingInputProjectIds: [] }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
+  }) as unknown as typeof fetch;
+}
+
+describe('projects rail run status', () => {
+  it('preserves distinct initials beside status badges when collapsed', async () => {
+    runsByProject = { one: { status: 'running' }, two: { status: 'running' } };
+    view();
+    fireEvent.click(screen.getByTestId('projects-rail-toggle'));
+    await waitFor(() => expect(screen.getAllByTestId('projects-rail-status')).toHaveLength(2));
+    const buttons = screen.getAllByTestId('projects-rail-row-open');
+    expect(within(buttons[0]!).getByText('我')).toBeTruthy();
+    expect(within(buttons[1]!).getByText('Q')).toBeTruthy();
+    fireEvent.click(buttons[1]!);
+    expect(buttons[1]!.getAttribute('title')).toBe('Q3 Launch');
+  });
+  beforeEach(() => {
+    // The run-status store is module-level on purpose (a status must survive a
+    // surface remount), so a test boundary has to clear it explicitly.
+    resetProjectRunStatusStore();
+    runsByProject = {};
+    stubRunsFeed();
+  });
+
+  afterEach(() => {
+    resetProjectRunStatusStore();
+    globalThis.fetch = originalFetch;
+  });
+
+  it('leads a running project with its status ball instead of its initial', async () => {
+    runsByProject = { one: { status: 'running' } };
+    view();
+    const [runningRow, idleRow] = screen.getAllByTestId('projects-rail-row');
+    if (!runningRow || !idleRow) throw new Error('rows missing');
+
+    await waitFor(() => expect(within(runningRow).getByTestId('projects-rail-status')).toBeTruthy());
+    // The ball TAKES the avatar slot rather than joining it: one mark per row.
+    expect(runningRow.querySelector('span')?.textContent).not.toBe('我');
+    // A project with nothing live keeps the initial it always had, so the rail
+    // does not turn into a wall of balls.
+    expect(within(idleRow).queryByTestId('projects-rail-status')).toBeNull();
+    expect(idleRow.textContent).toContain('Q3 Launch');
+  });
+
+  it('shows the ball for a finished run the user has not opened yet', async () => {
+    runsByProject = { two: { status: 'succeeded' } };
+    view();
+    const rows = screen.getAllByTestId('projects-rail-row');
+    await waitFor(() => expect(within(rows[1]!).getByTestId('projects-rail-status')).toBeTruthy());
+    expect(within(rows[0]!).queryByTestId('projects-rail-status')).toBeNull();
+  });
+
+  it('keeps every row on its initial when nothing has ever run', () => {
+    view();
+    expect(screen.queryAllByTestId('projects-rail-status')).toHaveLength(0);
+    expect(screen.getAllByTestId('projects-rail-row')[0]!.textContent).toContain('我的海报');
   });
 });

@@ -1,5 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import panelStyles from './NewProjectPanel.module.css';
 import { Dialog, DialogDescription, DialogFooter, DialogTitle } from '@open-design/components';
 import { createTabToTracking } from '@open-design/contracts/analytics';
 import { isOpenDesignHostAvailable, pickHostWorkingDir } from '@open-design/host';
@@ -127,6 +128,8 @@ export type CreateTab = 'prototype' | 'live-artifact' | 'deck' | 'template' | 'm
 export type MediaSurface = 'image' | 'video' | 'audio';
 
 export interface CreateInput {
+  /** UI-only: a failed folder handoff must fail this form submission. */
+  requireProjectFolder?: boolean;
   name: string;
   skillId: string | null;
   /** UI-only intent marker; the public project contract still receives only the resolved skill id. */
@@ -152,10 +155,9 @@ interface Props {
   onDeleteTemplate?: (id: string) => Promise<boolean>;
   promptTemplates: PromptTemplateSummary[];
   onCreate: (input: CreateInput & { requestId?: string }) => void;
-  // Personal edition: the chosen folder IS the project root, so creating a
-  // project links it through the same import path instead of minting a
-  // managed folder under the daemon data dir.
-  onCreateInFolder?: (baseDir: string, name: string) => Promise<void> | void;
+  /** Require an explicit output folder before submitting the complete creation form. */
+  requireProjectFolder?: boolean;
+  simplified?: boolean;
   onImportClaudeDesign?: (
     file: File,
   ) => Promise<ImportClaudeDesignOutcome | void> | ImportClaudeDesignOutcome | void;
@@ -286,7 +288,8 @@ export function NewProjectPanel({
   onDeleteTemplate,
   promptTemplates,
   onCreate,
-  onCreateInFolder,
+  requireProjectFolder = false,
+  simplified = false,
   onImportClaudeDesign,
   onImportFolder,
   onImportFolderResponse,
@@ -298,6 +301,7 @@ export function NewProjectPanel({
   initialTab = 'prototype',
 }: Props) {
   const t = useT();
+  const folderInputId = useId();
   const { locale } = useI18n();
   const analytics = useAnalytics();
   const importInputRef = useRef<HTMLInputElement | null>(null);
@@ -308,7 +312,6 @@ export function NewProjectPanel({
   const [workingDir, setWorkingDir] = useState<string | null>(null);
   const [workingDirToken, setWorkingDirToken] = useState<string | null>(null);
   const [workingDirPicking, setWorkingDirPicking] = useState(false);
-  const [creatingInFolder, setCreatingInFolder] = useState(false);
   const [workingDirError, setWorkingDirError] = useState<
     { message: string; details?: string } | null
   >(null);
@@ -724,7 +727,7 @@ export function NewProjectPanel({
   }, [tab]);
 
   function handleCreate() {
-    if (!canCreate) return;
+    if (!canCreate || (requireProjectFolder && !workingDir?.trim())) return;
     // Media surfaces don't carry a design system pick. Force the primary
     // and inspiration ids to empty there so the New Project panel can't
     // accidentally bind a stale DS that the user can no longer see in the
@@ -781,6 +784,7 @@ export function NewProjectPanel({
       { requestId },
     );
     onCreate({
+      ...(requireProjectFolder ? { requireProjectFolder: true } : {}),
       name: trimmedName || autoName(tab, mediaSurface, t),
       skillId: startTemplateId ?? skillIdForTab,
       skillSelectionProvenance: startTemplateId ? 'explicit-user' : 'automatic-default',
@@ -788,26 +792,11 @@ export function NewProjectPanel({
       metadata: {
         ...metadata,
         nameSource: trimmedName ? 'user' : 'generated',
-        ...(workingDir ? { userWorkingDir: workingDir } : {}),
+        ...(workingDir?.trim() ? { userWorkingDir: workingDir.trim() } : {}),
       },
       ...(workingDirToken ? { userWorkingDirToken: workingDirToken } : {}),
       requestId,
     });
-  }
-
-  async function handleCreateInFolder() {
-    if (!workingDir || creatingInFolder || !onCreateInFolder) return;
-    setCreatingInFolder(true);
-    setWorkingDirError(null);
-    try {
-      await onCreateInFolder(workingDir, name.trim());
-    } catch (err) {
-      setWorkingDirError({
-        message: err instanceof Error ? err.message : t('chat.linkedFolderPickError'),
-      });
-    } finally {
-      setCreatingInFolder(false);
-    }
   }
 
   async function handlePickWorkingDir() {
@@ -876,7 +865,50 @@ export function NewProjectPanel({
   });
 
   return (
-    <div className="newproj" data-testid="new-project-panel">
+    <div className={`newproj ${panelStyles.panel}`} data-testid="new-project-panel">
+      <div className="newproj-body">
+        <div className={panelStyles.folderField}>
+          <label htmlFor={`${folderInputId}-name`}>{t('newproj.namePlaceholder')}</label>
+          <input
+            id={`${folderInputId}-name`}
+            className="newproj-name"
+            autoFocus
+            data-testid="new-project-name"
+            placeholder={t('newproj.namePlaceholder')}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </div>
+
+        <div className={panelStyles.folderField}>
+          <label htmlFor={folderInputId}>{t('workingDirPicker.projectFolder')}</label>
+          <div className={panelStyles.folderControls}>
+            <input
+              id={folderInputId}
+              data-testid="new-project-folder-path"
+              value={workingDir ?? ''}
+              placeholder={t('newproj.folderPathPlaceholder')}
+              readOnly={isOpenDesignHostAvailable()}
+              required={requireProjectFolder}
+              onChange={(event) => {
+                setWorkingDir(event.target.value || null);
+                setWorkingDirToken(null);
+              }}
+              onBlur={() => setWorkingDir((current) => current?.trim() || null)}
+            />
+            <button type="button" data-testid="new-project-choose-folder"
+              onClick={() => void handlePickWorkingDir()} disabled={workingDirPicking}>
+              <Icon name="folder" size={14} />
+              {workingDirPicking ? t('workingDirPicker.processing') : t('workingDirPicker.chooseFolder')}
+            </button>
+          </div>
+          {!workingDir?.trim() ? <p>{t('newproj.folderRequiredHint')}</p> : null}
+        </div>
+
+
+        <details className={panelStyles.advanced} open={simplified && initialTab === 'prototype' ? undefined : true}>
+          <summary>{t('newproj.moreSettings')}{tab !== 'prototype' ? ` · ${t(TAB_LABEL_KEYS[tab])}` : ''}</summary>
+          <div className={panelStyles.advancedBody}>
       <div className={`newproj-tabs-shell${tabScroll.left ? ' can-left' : ''}${tabScroll.right ? ' can-right' : ''}`}>
         <button
           type="button"
@@ -921,7 +953,7 @@ export function NewProjectPanel({
           <Icon name="chevron-right" size={16} strokeWidth={2} />
         </button>
       </div>
-      <div className="newproj-body">
+
         <h3 className="newproj-title">
           <span className="newproj-title-text">{titleForTab(tab, mediaSurface, t)}</span>
           {tab === 'live-artifact' ? (
@@ -939,49 +971,6 @@ export function NewProjectPanel({
             onChange={setStartTemplateId}
           />
         ) : null}
-
-        <div className="newproj-name-row">
-          <input
-            className="newproj-name"
-            data-testid="new-project-name"
-            placeholder={t('newproj.namePlaceholder')}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </div>
-
-        <div className="newproj-working-dir-row">
-          <button
-            type="button"
-            className={`ghost newproj-working-dir od-tooltip${workingDir ? ' picked' : ''}`}
-            onClick={() => void handlePickWorkingDir()}
-            disabled={workingDirPicking}
-            title={workingDir ?? t('workingDirPicker.homeTitle')}
-            data-tooltip={workingDir ?? t('workingDirPicker.homeTitle')}
-          >
-            <Icon name="folder" size={14} />
-            <span>
-              {workingDirPicking
-                ? t('workingDirPicker.processing')
-                : workingDir
-                  ? displayFolderName(workingDir)
-                  : t('workingDirPicker.select')}
-            </span>
-          </button>
-          {workingDir ? (
-            <button
-              type="button"
-              className="newproj-working-dir-clear"
-              onClick={() => {
-                setWorkingDir(null);
-                setWorkingDirToken(null);
-              }}
-              aria-label={t('workingDirPicker.clearAria')}
-            >
-              <Icon name="close" size={14} />
-            </button>
-          ) : null}
-        </div>
 
         {showDesignSystemPicker ? (
           <DesignSystemPicker
@@ -1133,32 +1122,18 @@ export function NewProjectPanel({
           />
         ) : null}
 
-        {onCreateInFolder ? (
-          <div className="newproj-folder-root">
-            <p className="newproj-folder-root-label">{t('workingDirPicker.projectFolder')}</p>
-            {workingDir ? (
-              <code className="newproj-folder-root-path" data-testid="new-project-folder-path">{workingDir}</code>
-            ) : (
-              <p className="newproj-folder-root-hint">{t('workingDirPicker.projectFolderHint')}</p>
-            )}
-            <button
-              type="button"
-              className="ghost newproj-folder-root-pick"
-              data-testid="new-project-choose-folder"
-              onClick={() => void handlePickWorkingDir()}
-              disabled={workingDirPicking}
-            >
-              <Icon name="folder" size={14} />
-              <span>{workingDirPicking ? t('workingDirPicker.processing') : t('workingDirPicker.chooseFolder')}</span>
-            </button>
-          </div>
-        ) : null}
 
+
+
+          </div>
+        </details>
+      </div>
+      <div className={panelStyles.actions}>
         <button
           className="primary newproj-create"
-          data-testid={onCreateInFolder ? 'new-project-create' : 'create-project'}
-          onClick={onCreateInFolder ? () => void handleCreateInFolder() : handleCreate}
-          disabled={!canCreate || (Boolean(onCreateInFolder) && (!workingDir || creatingInFolder))}
+          data-testid="create-project"
+          onClick={handleCreate}
+          disabled={!canCreate || (requireProjectFolder && !workingDir?.trim())}
           title={
             tab === 'template' && templateId == null
               ? t('newproj.createDisabledTitle')
@@ -1174,7 +1149,7 @@ export function NewProjectPanel({
               : t('newproj.create')}
           </span>
         </button>
-        {onImportClaudeDesign ? (
+        {!simplified && onImportClaudeDesign ? (
           <>
             <input
               ref={importInputRef}
@@ -1199,7 +1174,7 @@ export function NewProjectPanel({
             </button>
           </>
         ) : null}
-        {folderImport.available ? (
+        {!simplified && folderImport.available ? (
           <div className="newproj-open-folder">
             <button
               type="button"
@@ -1217,7 +1192,7 @@ export function NewProjectPanel({
           </div>
         ) : null}
       </div>
-      <div className="newproj-footer">{t('newproj.privacyFooter')}</div>
+
       {importZipError ? (
         <Toast
           message={importZipError.message}
@@ -1244,10 +1219,6 @@ export function NewProjectPanel({
       ) : null}
     </div>
   );
-}
-
-function displayFolderName(path: string): string {
-  return path.split(/[/\\]/).filter(Boolean).pop() ?? path;
 }
 
 function PlatformPicker({

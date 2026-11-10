@@ -4,6 +4,7 @@
    renders; the shell owns the column itself (see styles/shell.css). */
 
 .rail {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 0 0 auto;
@@ -18,6 +19,27 @@
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   user-select: none;
   overflow: hidden;
+}
+
+.resizeHandle {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  width: 6px;
+  z-index: 2;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.resizeHandle:hover,
+.resizeHandle:focus-visible,
+.resizing {
+  background: var(--border-strong);
+}
+
+.resizeHandle:focus-visible {
+  outline: 2px solid var(--text-strong);
+  outline-offset: -2px;
 }
 
 .railCollapsed {
@@ -178,6 +200,7 @@
 }
 
 .avatar {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -192,11 +215,35 @@
   line-height: 1;
 }
 
+/* A live run's ball takes the avatar's slot instead of sitting beside it: one
+   project, one mark, and every name keeps the column it already had. Same 22px
+   box so the two states line up, without the avatar's chip behind it — the ball
+   is the design draft's 10px (P0-24) and reads as a mark, not a badge. */
+.statusSlot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+}
+
 .name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Run activity must not replace the project identity in the collapsed rail. */
+.statusBadge {
+  position: absolute;
+  inset-block-start: -3px;
+  inset-inline-end: -3px;
+  display: flex;
+  padding: 2px;
+  border-radius: 50%;
+  background: var(--bg-elevated, #fff);
 }
 
 .empty {
@@ -246,6 +293,10 @@
   justify-content: center;
   padding-inline: 0;
 }
+
+.folderAction { min-width: 0; }
+.railCollapsed .folderAction button { width: 100%; padding-inline: 0; }
+.railCollapsed .folderAction button span { display: none; }
 
 .srOnly {
   position: absolute;

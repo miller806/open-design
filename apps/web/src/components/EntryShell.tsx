@@ -208,6 +208,14 @@ import { IntegrationsView, type IntegrationTab } from './IntegrationsView';
 import { InlineModelSwitcher } from './InlineModelSwitcher';
 import { type EntrySettingsSection } from './EntrySettingsMenu';
 import { NewProjectModal } from './NewProjectModal';
+import { ProjectImportActions } from './ProjectImportActions';
+// The New Project panel's create adapter is shared with the workbench rail's
+// in-place mount, so both surfaces derive the same request from the same form.
+import {
+  createProjectInputFromComposer,
+  createProjectInputFromPanel,
+  type EntryCreateProjectInput,
+} from './new-project-create';
 import { ExtensionsMarketplace } from './PluginsView';
 import type { CreateInput, CreateTab, ImportClaudeDesignOutcome } from './NewProjectPanel';
 import type { PluginLoopSubmit } from './PluginLoopHome';
@@ -350,36 +358,7 @@ function startOrJoinInlineTest(
   return promise;
 }
 
-type EntryCreateProjectInput = Omit<CreateInput, 'metadata'> & {
-  metadata?: CreateInput['metadata'];
-  pendingPrompt?: string;
-  pluginId?: string;
-  pluginSource?: string;
-  skillCatalogScope?: PluginLoopSubmit['skillCatalogScope'];
-  designSystemCatalogScope?: PluginLoopSubmit['designSystemCatalogScope'];
-  pluginType?: string;
-  appliedPluginSnapshotId?: string;
-  pluginInputs?: Record<string, unknown>;
-  automaticStrategyTaskProfile?: ProjectScenarioTaskProfile;
-  /** Official example card the user picked under the automatic route. */
-  exampleReference?: CreateProjectExampleReference;
-  initialRunContext?: RunContextSelection | null;
-  conversationMode?: ChatSessionMode;
-  autoSendFirstMessage?: boolean;
-  /** Exact workspace/member authority checked by the Home AMR preflight. */
-  amrGatePrecheckWitness?: AmrBalanceGateScope;
-  /**
-   * The optimistic project already flushed by `onBeginProjectCreation`. The
-   * create reuses this id (the daemon accepts a caller-minted id) instead of
-   * starting a second hand-off.
-   */
-  optimisticProjectId?: string;
-  requestId?: string;
-  pendingFiles?: File[];
-  userWorkingDirToken?: string;
-  linkedDirs?: string[] | null;
-  onboardingEntry?: OnboardingEntry;
-};/**
+/**
  * What App hands back once a Home send has entered the project frame
  * optimistically: the client-minted project id the create must reuse, and the
  * way to undo the hand-off (drop the optimistic row, return to Home with the
@@ -389,84 +368,6 @@ type EntryCreateProjectInput = Omit<CreateInput, 'metadata'> & {
 export interface OptimisticProjectCreationHandoff {
   projectId: string;
   rollback: (options?: { notice?: string }) => void;
-}
-
-function defaultPluginIdForMetadata(metadata: ProjectMetadata): string | null {
-  return defaultScenarioPluginIdForProjectMetadata(metadata);
-}
-
-function defaultPluginInputsForCreate(
-  input: CreateInput,
-  pluginId: string | null,
-): Record<string, unknown> | null {
-  const kind = input.metadata.kind;
-  const projectName = input.name.trim();
-
-  if (pluginId === 'example-web-prototype') {
-    return {
-      artifactKind: input.metadata.includeLandingPage
-        ? 'landing page'
-        : 'web prototype',
-      fidelity: input.metadata.fidelity ?? 'high-fidelity',
-      audience: 'product evaluators',
-      designSystem: 'the active project design system',
-      template: input.metadata.templateLabel ?? 'the bundled web prototype seed',
-    };
-  }
-
-  if (pluginId === 'example-simple-deck') {
-    return {
-      deckType: 'pitch deck',
-      topic: projectName || 'the user brief',
-      audience: 'decision makers',
-      slideCount: '10-15 pages',
-      speakerNotes: input.metadata.speakerNotes
-        ? 'include speaker notes'
-        : 'no speaker notes',
-      designSystem: 'the active project design system',
-    };
-  }
-
-  if (pluginId === 'od-new-generation') {
-    const templateLabel = input.metadata.templateLabel?.trim();
-    const artifactKind =
-      kind === 'template'
-        ? 'artifact based on a saved template'
-        : kind === 'other'
-          ? 'custom design artifact'
-          : `${kind} artifact`;
-    return {
-      artifactKind,
-      audience: 'product and design reviewers',
-      topic: templateLabel || projectName || 'the user brief',
-    };
-  }
-
-  if (pluginId !== 'od-media-generation') return null;
-  if (kind !== 'image' && kind !== 'video' && kind !== 'audio') return null;
-
-  const promptTemplate = input.metadata.promptTemplate;
-  const subject =
-    promptTemplate?.prompt?.trim()
-    || projectName
-    || promptTemplate?.title?.trim()
-    || `${kind} concept`;
-  const style =
-    promptTemplate?.summary?.trim()
-    || 'cinematic, high-quality, on-brand';
-  const aspect =
-    kind === 'image'
-      ? input.metadata.imageAspect
-      : kind === 'video'
-        ? input.metadata.videoAspect
-        : undefined;
-
-  return {
-    mediaKind: kind,
-    subject,
-    style,
-    ...(aspect ? { aspect } : {}),
-  };
 }
 
 export interface ProjectTitleHint {
@@ -564,7 +465,6 @@ interface Props {
   onImportClaudeDesign: (
     file: File,
   ) => Promise<ImportClaudeDesignOutcome | void> | ImportClaudeDesignOutcome | void;
-  onCreateInFolder?: (baseDir: string, name: string) => Promise<void> | void;
   onImportFolder?: (baseDir: string) => Promise<void> | void;
   onImportFolderResponse?: (response: OpenDesignHostProjectImportSuccess) => Promise<void> | void;
   /** Open the New Project panel once (workbench rail → Home). */
@@ -689,7 +589,6 @@ export function EntryShell({
   onBeginProjectCreation,
   onAmrBalanceGateBlockChange,
   onImportClaudeDesign,
-  onCreateInFolder,
   onImportFolder,
   onImportFolderResponse,
   pendingNewProject = false,
@@ -1571,36 +1470,7 @@ export function EntryShell({
   }
 
   function handleCreate(input: CreateInput) {
-    // The NewProjectModal no longer asks the user to pick a plugin.
-    // Each project kind is silently bound to its default scenario
-    // pipeline at creation time so the user lands in a running flow
-    // without having to reason about pipeline internals. The mapping
-    // is intentionally explicit so future kind-specific scenarios
-    // (e.g. a deck- or image-specialized pipeline) can take over a
-    // single row without touching the form.
-    const pluginId = defaultPluginIdForMetadata(input.metadata);
-    const pluginInputs = defaultPluginInputsForCreate(input, pluginId);
-    const { skillSelectionProvenance, ...projectInput } = input;
-    const automaticStrategyRoute = skillSelectionProvenance === 'explicit-user'
-      ? null
-      : automaticStrategyTaskProfileForProjectMetadata(input.metadata);
-    return onCreateProject({
-      ...projectInput,
-      // The modal's Blank card historically persisted a hidden default Skill
-      // (for example agent-browser) even though the automatic scenario already
-      // owns the task workflow. When OD Next replaces that scenario, carrying
-      // the hidden Skill makes it look user-selected and can correctly trip
-      // the planning-only validator. Keep explicit template/Skill picks exact;
-      // omit only the UI's implicit default on the four automatic routes.
-      ...(automaticStrategyRoute && skillSelectionProvenance === 'automatic-default'
-        ? { skillId: null }
-        : {}),
-      ...(automaticStrategyRoute
-        ? { automaticStrategyTaskProfile: automaticStrategyRoute }
-        : pluginInputs
-          ? { pluginInputs }
-          : {}),
-    });
+    return onCreateProject(createProjectInputFromPanel(input));
   }
 
   // Plan §3.F5 — the home prompt-loop submit path. The user picks a
@@ -1622,7 +1492,7 @@ export function EntryShell({
       navigate({ kind: 'home', view: 'onboarding' }, { replace: true });
       return 'blocked' as const;
     }
-    const createInput = pluginLoopCreateInput(payload);
+    const createInput = createProjectInputFromComposer(payload);
     const isAmrSend = config.mode === 'daemon' && config.agentId === 'amr';
     const amrModelId = isAmrSend
       ? effectiveAgentModelId(
@@ -1901,92 +1771,6 @@ export function EntryShell({
     }
   }
 
-  /**
-   * The create request a Home composer send turns into. Pure: it reads only
-   * the payload, so it can be computed before the optimistic hand-off and
-   * reused by the create that follows the admission check.
-   */
-  function pluginLoopCreateInput(payload: PluginLoopSubmit): EntryCreateProjectInput {
-    const summarizedName = summarizeProjectNameFromPrompt(payload.prompt);
-    const head = payload.prompt.trim().split(/\s+/).slice(0, 8).join(' ');
-    const firstAttachmentName = payload.attachments?.[0]?.name ?? '';
-    const fallbackName =
-      summarizedName || (head.length > 0 ? head : firstAttachmentName || 'Untitled');
-    const name =
-      payload.pluginTitle && payload.pluginTitle.trim().length > 0
-        ? payload.pluginTitle.trim()
-        : fallbackName;
-    const linkedDirs = Array.from(
-      new Set(
-        [
-          ...(payload.workingDir ? [payload.workingDir] : []),
-          ...(payload.linkedDirs ?? []),
-        ].map((dir) => dir.trim()).filter(Boolean),
-      ),
-    );
-    const metadata: ProjectMetadata = {
-      ...(payload.projectMetadata ?? {}),
-      kind: payload.projectKind ?? payload.projectMetadata?.kind ?? 'prototype',
-      nameSource: 'prompt',
-      ...(payload.contextPlugins && payload.contextPlugins.length > 0
-        ? { contextPlugins: payload.contextPlugins }
-        : {}),
-      ...(payload.contextMcpServers && payload.contextMcpServers.length > 0
-        ? { contextMcpServers: payload.contextMcpServers }
-        : {}),
-      ...(payload.contextConnectors && payload.contextConnectors.length > 0
-        ? { contextConnectors: payload.contextConnectors }
-        : {}),
-      // The Home working-directory picker grants the agent read-only
-      // awareness of a local folder (via `--add-dir`), it does NOT import
-      // that folder into Design Files. So the picked path becomes the new
-      // project's `linkedDirs` rather than its `baseDir`/`userWorkingDir`:
-      // Design Files stays the managed `.od/projects/<id>` artifact store,
-      // independent of the user's local files.
-      ...(linkedDirs.length > 0 ? { linkedDirs } : {}),
-      ...(payload.examplePromptContext ? {
-        examplePrompt: true,
-        examplePromptTitle: payload.examplePromptContext.title,
-        examplePromptBrief: payload.examplePromptContext.brief,
-      } : {}),
-    };
-    const strategyRoutingFields = entryStrategyRoutingFields(payload, metadata);
-    return {
-      name,
-      ...strategyRoutingFields,
-      ...(strategyRoutingFields.skillId && payload.skillCatalogScope
-        ? { skillCatalogScope: payload.skillCatalogScope }
-        : {}),
-      designSystemId: payload.designSystemId ?? null,
-      ...(payload.designSystemCatalogScope
-        ? { designSystemCatalogScope: payload.designSystemCatalogScope }
-        : {}),
-      metadata,
-      pendingPrompt: payload.prompt,
-      ...(payload.pluginId && !payload.pluginSelectionProvenance
-        ? { pluginId: payload.pluginId }
-        : {}),
-      ...(payload.pluginSource && !payload.pluginSelectionProvenance
-        ? { pluginSource: payload.pluginSource }
-        : {}),
-      ...(payload.pluginType && !payload.pluginSelectionProvenance
-        ? { pluginType: payload.pluginType }
-        : {}),
-      ...(payload.appliedPluginSnapshotId && !payload.pluginSelectionProvenance
-        ? { appliedPluginSnapshotId: payload.appliedPluginSnapshotId }
-        : {}),
-      ...(payload.initialRunContext ? { initialRunContext: payload.initialRunContext } : {}),
-      ...(payload.conversationMode ? { conversationMode: payload.conversationMode } : {}),
-      ...(payload.attachments && payload.attachments.length > 0
-        ? { pendingFiles: payload.attachments }
-        : {}),
-      // No `userWorkingDirToken`: linkedDirs grant read-only `--add-dir`
-      // access and are validated by the daemon at create time, so they do
-      // not need the desktop main-process trust token that baseDir imports
-      // require for write access.
-      autoSendFirstMessage: true,
-    };
-  }
 
   /**
    * Re-read every workspace surface because onboarding just ended.
@@ -2328,6 +2112,7 @@ export function EntryShell({
                     onRename={onRenameProject}
                     onRefresh={onProjectsRefresh}
                     isActive={view === 'projects'}
+                    importActions={<ProjectImportActions onImportFolder={onImportFolder} onImportFolderResponse={onImportFolderResponse} onImportClaudeDesign={onImportClaudeDesign} />}
                     onNewProject={() => {
                       openNewProject();
                     }}
@@ -2589,7 +2374,7 @@ export function EntryShell({
         loading={skillsLoading}
         onCreate={handleCreate}
         onImportClaudeDesign={onImportClaudeDesign}
-        {...(onCreateInFolder ? { onCreateInFolder } : {})}
+        requireProjectFolder
         {...(onImportFolder ? { onImportFolder } : {})}
         {...(onImportFolderResponse ? { onImportFolderResponse } : {})}
         onOpenConnectorsTab={() => {

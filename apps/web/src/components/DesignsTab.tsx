@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Dialog, DialogDescription, DialogFooter, DialogTitle } from "@open-design/components";
 import type { WorkspaceCollabContext } from "@open-design/contracts";
@@ -113,6 +113,7 @@ export const STATUS_LABEL_KEYS = {
 >;
 
 interface Props {
+  importActions?: ReactNode;
 	projects: Project[];
 	skills: SkillSummary[];
 	designSystems: DesignSystemSummary[];
@@ -127,6 +128,7 @@ interface Props {
 }
 
 export function DesignsTab({
+  importActions,
 	projects,
 	skills,
 	designSystems,
@@ -639,6 +641,7 @@ export function DesignsTab({
 					</div>
 				</div>
 				<div className="toolbar-right">
+          {importActions}
 					{onNewProject && projects.length > 0 ? (
 						<button
 							type="button"

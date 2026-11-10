@@ -1,7 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Project } from '../types';
 import { useT } from '../i18n';
+import { useProjectRunStatuses } from '../hooks/useProjectRunStatuses';
+import { STATUS_LABEL_KEYS } from '../state/projectRunStatus';
 import { Icon } from './Icon';
+import {
+  hasRunStatusGlyph,
+  ProjectRunStatusIcon,
+  STATUS_BALL_SIZE,
+} from './ProjectRunStatusIcon';
 import {
   ProjectDeleteConfirmDialog,
 } from './project-actions/ProjectDeleteConfirmDialog';
@@ -22,9 +29,34 @@ import styles from './ProjectsRail.module.css';
  * Home, opening the card menu, and coming back. It deletes through the SAME
  * confirmation dialog every other project entry point uses, so a stray click
  * still cannot destroy a project from here.
+ *
+ * Each row also answers "which project is running?" — this rail is the ONLY
+ * project list on screen once a project is open (the entry rail's 最近项目 and
+ * the tab switcher's dropdown both unmount with their surfaces), so leaving it
+ * as bare initial avatars meant a user watching two runs had no way to tell
+ * which one was still going. The glyph comes from `ProjectRunStatusIcon` off
+ * the shared run-status feed, the same pair the other two lists use, so all
+ * three read one story about one project.
  */
 
 const COLLAPSE_STORAGE_KEY = 'od.projects-rail.collapsed';
+const WIDTH_STORAGE_KEY = 'od.projects-rail.width';
+const DEFAULT_WIDTH = 208;
+const MIN_WIDTH = 160;
+const MAX_WIDTH = 360;
+
+function clampWidth(width: number): number {
+  return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, width));
+}
+
+function readWidthPreference(): number {
+  try {
+    const stored = Number(window.localStorage.getItem(WIDTH_STORAGE_KEY));
+    return Number.isFinite(stored) && stored > 0 ? clampWidth(stored) : DEFAULT_WIDTH;
+  } catch {
+    return DEFAULT_WIDTH;
+  }
+}
 
 function readCollapsedPreference(): boolean {
   try {
@@ -62,6 +94,7 @@ export function ProjectsRail({
   onNewProject,
   onOpenSettings,
   onDeleteProject,
+  folderAction,
 }: {
   projects: Project[];
   activeProjectId: string;
@@ -71,9 +104,26 @@ export function ProjectsRail({
   onNewProject: () => void;
   onOpenSettings: () => void;
   onDeleteProject?: ProjectsRailDeleteHandler;
+  folderAction?: ReactNode;
 }) {
   const t = useT();
+  // Every row is on screen or a scroll away, so every row asks. `enabled` is
+  // deliberately not gated: the rail stays mounted for as long as the user is
+  // in a project, and that is exactly when a run status matters. The feed is
+  // one read per project on subscribe plus the shared 4s poll, and it coalesces
+  // ids across surfaces, so the cost is the user's own project count.
+  const projectIds = useMemo(() => projects.map((project) => project.id), [projects]);
+  const runStatusByProjectId = useProjectRunStatuses(projectIds);
   const [collapsed, setCollapsed] = useState<boolean>(() => readCollapsedPreference());
+  const [width, setWidth] = useState(readWidthPreference);
+  const dragRef = useRef<{ pointerId: number; startX: number; width: number } | null>(null);
+  const [resizing, setResizing] = useState(false);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(WIDTH_STORAGE_KEY, String(width));
+    } catch { /* A storage restriction must not prevent resizing. */ }
+  }, [width]);
   const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
   // Rename happens in place on the row: a design tool's file panel should not
   // send the user to another screen to fix a name.
@@ -135,9 +185,54 @@ export function ProjectsRail({
     <>
       <nav
         className={`${styles.rail}${collapsed ? ` ${styles.railCollapsed}` : ''}`}
+        style={collapsed ? undefined : { width }}
         aria-label={t('entry.primaryNavAria')}
         data-testid="projects-rail"
       >
+        {!collapsed ? (
+          <div
+            className={`${styles.resizeHandle}${resizing ? ` ${styles.resizing}` : ''}`}
+            role="separator"
+            aria-label={t('entry.resizeAria')}
+            aria-orientation="vertical"
+            aria-valuemin={MIN_WIDTH}
+            aria-valuemax={MAX_WIDTH}
+            aria-valuenow={width}
+            tabIndex={0}
+            onDoubleClick={() => setWidth(DEFAULT_WIDTH)}
+            onKeyDown={(event) => {
+              const step = event.shiftKey ? 32 : 8;
+              const next = event.key === 'ArrowLeft' ? width - step
+                : event.key === 'ArrowRight' ? width + step
+                  : event.key === 'Home' ? MIN_WIDTH
+                    : event.key === 'End' ? MAX_WIDTH : null;
+              if (next === null) return;
+              event.preventDefault();
+              setWidth(clampWidth(next));
+            }}
+            onPointerDown={(event) => {
+              if (event.button !== 0) return;
+              event.preventDefault();
+              event.currentTarget.setPointerCapture(event.pointerId);
+              dragRef.current = { pointerId: event.pointerId, startX: event.clientX, width };
+              setResizing(true);
+            }}
+            onPointerMove={(event) => {
+              const drag = dragRef.current;
+              if (!drag || drag.pointerId !== event.pointerId) return;
+              const direction = getComputedStyle(event.currentTarget).direction === 'rtl' ? -1 : 1;
+              setWidth(clampWidth(drag.width + direction * (event.clientX - drag.startX)));
+            }}
+            onPointerUp={(event) => {
+              if (dragRef.current?.pointerId !== event.pointerId) return;
+              dragRef.current = null;
+              setResizing(false);
+              event.currentTarget.releasePointerCapture(event.pointerId);
+            }}
+            onLostPointerCapture={() => { dragRef.current = null; setResizing(false); }}
+            onPointerCancel={() => { dragRef.current = null; setResizing(false); }}
+          />
+        ) : null}
         <div className={styles.header}>
           {collapsed ? null : <span className={styles.title}>{t('entry.navProjects')}</span>}
           <button
@@ -157,6 +252,11 @@ export function ProjectsRail({
           {projects.map((project) => {
             const active = project.id === activeProjectId;
             const name = project.name?.trim() || t('common.untitled');
+            // `succeeded` counts here too: the blue ball is the shared mark for
+            // a finished run nobody has opened since, and opening the project
+            // (this rail's own click, or the chat) is what spends it.
+            const runStatus = runStatusByProjectId.get(project.id);
+            const statusGlyph = runStatus && hasRunStatusGlyph(runStatus) ? runStatus : null;
             return (
               <div
                 key={project.id}
@@ -197,7 +297,30 @@ export function ProjectsRail({
                     onClick={() => onOpenProject(project.id)}
                     title={collapsed ? name : undefined}
                   >
-                    <span className={styles.avatar} aria-hidden>{initialFor(name)}</span>
+                    {collapsed ? (
+                      <span className={styles.avatar}>
+                        <span aria-hidden>{initialFor(name)}</span>
+                        {statusGlyph ? (
+                          <span className={styles.statusBadge} data-testid="projects-rail-status">
+                            <ProjectRunStatusIcon
+                              status={statusGlyph}
+                              size={STATUS_BALL_SIZE}
+                              label={t(STATUS_LABEL_KEYS[statusGlyph])}
+                            />
+                          </span>
+                        ) : null}
+                      </span>
+                    ) : statusGlyph ? (
+                      <span className={styles.statusSlot} data-testid="projects-rail-status">
+                        <ProjectRunStatusIcon
+                          status={statusGlyph}
+                          size={STATUS_BALL_SIZE}
+                          label={t(STATUS_LABEL_KEYS[statusGlyph])}
+                        />
+                      </span>
+                    ) : (
+                      <span className={styles.avatar} aria-hidden>{initialFor(name)}</span>
+                    )}
                     {collapsed ? <span className={styles.srOnly}>{name}</span> : (
                       <span className={styles.name}>{name}</span>
                     )}
@@ -239,6 +362,7 @@ export function ProjectsRail({
         </div>
 
         <div className={styles.footer}>
+          {folderAction ? <div className={styles.folderAction}>{folderAction}</div> : null}
           <button
             type="button"
             className={styles.action}

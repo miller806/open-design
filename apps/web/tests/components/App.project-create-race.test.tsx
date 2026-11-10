@@ -81,6 +81,8 @@ import type { AmrAuthRetryContinuation } from '../../src/runtime/amr-auth-retry-
 import type { VelaLoginStatus } from '../../src/providers/daemon';
 import { workspaceDirectoryFixture } from '../helpers/workspace-context';
 
+const requiredFolderHarness = vi.hoisted(() => ({ result: null as Promise<unknown> | null }));
+
 const workspaceInvalidationHarness = vi.hoisted(() => ({
   handlers: [] as Array<Record<string, (payload: any) => void>>,
   onActive: [] as Array<() => void>,
@@ -241,6 +243,14 @@ vi.mock('../../src/components/EntryView', () => ({
       >
         Create plugin share project
       </button>
+      <button type="button" onClick={() => {
+        requiredFolderHarness.result = Promise.resolve(onCreateProject({
+          name: 'Required folder project', skillId: null, designSystemId: null,
+          requireProjectFolder: true,
+          metadata: {kind: 'prototype', userWorkingDir: '/Users/me/external'},
+        }));
+        void requiredFolderHarness.result?.catch(() => {});
+      }}>Create form with required folder</button>
       <button
         type="button"
         onClick={() =>
@@ -2505,6 +2515,17 @@ describe('App project creation routing', () => {
       );
     });
     expect(screen.queryByTestId('entry-project-project-existing')).toBeNull();
+  });
+
+  it('rejects form creation and discards its unused project when the required folder fails', async () => {
+    mockedListProjects.mockResolvedValue([]);
+    mockedReplaceProjectWorkingDir.mockRejectedValue(new Error('folder authorization rejected'));
+    render(<App />);
+    fireEvent.click(await screen.findByRole('button', {name: 'Create form with required folder'}));
+    await expect(requiredFolderHarness.result).rejects.toThrow('folder authorization rejected');
+    expect(vi.mocked(deleteProject).mock.calls.some(([id]) => id === 'project-new')).toBe(true);
+    expect(mockedUploadProjectFiles).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('project-view')).toBeNull();
   });
 
   it('switches to the picked working dir before uploading staged Home attachments', async () => {

@@ -38,6 +38,7 @@ vi.mock('../../src/collab/useWorkspaceContext', () => ({
 }));
 
 import { pickAndImportHostProject } from '@open-design/host';
+import { ProjectImportActions } from '../../src/components/ProjectImportActions';
 import { NewProjectModal } from '../../src/components/NewProjectModal';
 import { I18nProvider } from '../../src/i18n';
 import type {
@@ -169,25 +170,13 @@ describe('NewProjectModal layout', () => {
     );
     const onImportFolderResponse = vi.fn();
 
-    render(
-      <NewProjectModal
-        open
-        skills={skills}
-        designSystems={designSystems}
-        defaultDesignSystemId={null}
-        templates={[]}
-        promptTemplates={[]}
-        onCreate={() => {}}
-        onImportFolderResponse={onImportFolderResponse}
-        onClose={() => {}}
-      />,
-    );
+    render(<ProjectImportActions onImportFolderResponse={onImportFolderResponse} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Open folder' }));
 
     await waitFor(() => {
       expect(pickAndImportHostProject).toHaveBeenCalledWith({
-        skillId: 'prototype-skill',
+        skillId: null,
         workspaceContext: expect.objectContaining({
           workspaceId: 'workspace-modal',
           workspaceMemberId: 'member-modal',
@@ -222,7 +211,9 @@ describe('NewProjectModal layout', () => {
 
     expect(screen.getByRole('dialog', { name: '新建项目' })).toBeTruthy();
     expect(screen.getByRole('heading', { name: '新建项目' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '打开文件夹' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '打开文件夹' })).toBeNull();
+    expect(screen.getByText('更多设置')).toBeTruthy();
+    expect(screen.getByText('更多设置').closest('details')?.open).toBe(false);
     expect(screen.queryByText('New project')).toBeNull();
     expect(screen.queryByText('Open folder')).toBeNull();
   });
@@ -255,11 +246,23 @@ describe('NewProjectModal template deletion plumbing', () => {
       />,
     );
 
+    fireEvent.click(screen.getByText('More settings'));
     fireEvent.click(screen.getByRole('tab', { name: 'From template' }));
     fireEvent.click(screen.getByLabelText(/delete template/i));
     await screen.findByRole('alertdialog');
     fireEvent.click(screen.getByRole('button', { name: 'Delete template' }));
 
     expect(onDelete).toHaveBeenCalledWith('tmpl-landing');
+  });
+});
+
+describe('NewProjectModal required folder', () => {
+  it('shows one folder field and prevents creation until a folder is chosen', () => {
+    render(<NewProjectModal open skills={skills} designSystems={designSystems}
+      defaultDesignSystemId="clay" templates={[]} promptTemplates={[]}
+      onCreate={() => {}} requireProjectFolder onClose={() => {}} />);
+    expect(screen.getAllByTestId('new-project-choose-folder')).toHaveLength(1);
+    expect(screen.getByTestId('create-project')).toBeDisabled();
+    expect(screen.queryByText('Local storage')).toBeNull();
   });
 });

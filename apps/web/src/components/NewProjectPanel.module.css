@@ -1,0 +1,91 @@
+.panel :global(.newproj-body) > * {
+  flex-shrink: 0;
+}
+
+/* Template previews are cards, so the global button height must not clip them. */
+.panel :global(.newproj-start-card) {
+  height: auto;
+}
+
+.panel :global(.newproj-start-thumb) {
+  flex-shrink: 0;
+}
+
+.actions {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 24px 4px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.advanced {
+  min-width: 0;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.advanced summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 13px;
+  padding-block: 4px;
+}
+
+.advancedBody {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 16px;
+}
+
+.advancedBody :global(.newproj-tabs-shell) {
+  padding-inline: 0;
+  margin-bottom: 0;
+}
+
+.panel :global(.newproj-body) { gap: 20px; }
+
+.folderField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.folderControls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.folderControls input {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  color: var(--text);
+}
+
+.folderControls button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.folderField p {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+@media (max-width: 480px) {
+  .folderControls { flex-wrap: wrap; }
+  .folderControls input { flex-basis: 100%; }
+}

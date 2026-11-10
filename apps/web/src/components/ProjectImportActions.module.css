@@ -1,0 +1,2 @@
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
